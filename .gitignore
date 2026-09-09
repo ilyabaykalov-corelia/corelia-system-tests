@@ -1,0 +1,15 @@
+**/target/
+.local/
+.env
+.env.*
+!.env.example
+.idea/
+*.iml
+*.log
+.DS_Store
+
+# Закрытые ключи и локальные хранилища сертификатов.
+*.key
+*.p12
+*.pfx
+*.jks
