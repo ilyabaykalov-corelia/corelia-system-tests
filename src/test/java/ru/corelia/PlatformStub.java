@@ -244,6 +244,15 @@ final class PlatformStub implements AutoCloseable {
                 graphql(exchange, call.json());
             } else if (path.contains("/processes/")) {
                 processCreatedId = text(call.json().path("payload"), "documentId");
+                if (!processIncident) {
+                    document = copy(call.json().path("payload"));
+                    document.put("id", "model-new").put("approvalStatus", "CREATED")
+                            .put("contractNumber", "FROM-PLATFORM");
+                    document.set("documentType", object("id", "PDS_CONTRACT", "name", "Договор ПДС"));
+                    task.set("attributes", object("documentId", object("value", processCreatedId)));
+                    task.put("status", "NEW").putNull("assignee");
+                    noTask = false;
+                }
                 json(
                         exchange,
                         200,
@@ -302,7 +311,8 @@ final class PlatformStub implements AutoCloseable {
                 }
                 operation(exchange, text(call.json().path("userTaskIds").get(0)));
             } else if (path.contains("/usertasks/") || path.contains("/user-tasks/")) {
-                if (noTask || fallbackDetails && path.contains("/usertasks/"))
+                if (noTask || !path.substring(path.lastIndexOf('/') + 1).equals(text(task, "id"))
+                        || fallbackDetails && path.contains("/usertasks/"))
                     json(exchange, 404, object("message", "Не найдено"));
                 else json(exchange, 200, task);
             } else if (path.endsWith("/upload/files/")) {
@@ -376,19 +386,7 @@ final class PlatformStub implements AutoCloseable {
         JsonNode variables = body.path("variables");
         JsonNode result;
         if (query.startsWith("query searchPdsContract"))
-            result = object("searchPdsContract", object("elems", List.of(document), "count", 1));
-        else if (query.startsWith("query documentStates"))
-            result =
-                    object(
-                            "getStatesPdsContract",
-                            object(
-                                    "elems",
-                                    List.of(
-                                            copy(document)
-                                                    .put("sysHistNumber", 1)
-                                                    .put("sysHistoryTime", "2026-09-01T10:00:00Z")),
-                                    "count",
-                                    1));
+            result = object("searchPdsContract", object("elems", document == null ? List.of() : List.of(document), "count", document == null ? 0 : 1));
         else if (query.startsWith("query searchDocumentProcessSettings"))
             result =
                     object(
@@ -446,8 +444,6 @@ final class PlatformStub implements AutoCloseable {
                                     new ArrayList<>(attachments.values()),
                                     "count",
                                     attachments.size()));
-        else if (query.startsWith("query attachmentComposition"))
-            result = object("searchAttachmentChange", object("elems", List.of(), "count", 0));
         else if (query.startsWith("mutation createAttachment")
                 || query.startsWith("mutation replaceAttachmentVersion")) {
             String previous = text(variables, "currentAttachmentId");

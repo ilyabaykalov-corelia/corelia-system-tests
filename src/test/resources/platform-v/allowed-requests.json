@@ -31,7 +31,7 @@
   },
   {
     "name": "searchPdsContract",
-    "body": "query searchPdsContract($offset: Int, $limit: Int, $cond: String, $sort: [_SortCriterionSpecification!]) { searchPdsContract(offset: $offset, limit: $limit, cond: $cond, sort: $sort) { elems { id documentId documentType { id name } contractDate contractNumber snils approvalStatus createdBy createdAt assignee attachmentsHead historyInitialized } count } }",
+    "body": "query searchPdsContract($offset: Int, $limit: Int, $cond: String, $sort: [_SortCriterionSpecification!]) { searchPdsContract(offset: $offset, limit: $limit, cond: $cond, sort: $sort) { elems { id documentId documentType { id name } contractDate contractNumber snils approvalStatus createdBy createdAt assignee } count } }",
     "checkForAnyPrivilege": [
       "PdsContract:read"
     ]
@@ -44,23 +44,15 @@
     ]
   },
   {
-    "name": "editPdsContract",
-    "body": "mutation editPdsContract($id: ID!, $documentType: ID!, $contractDate: _Date!, $contractNumber: String!, $snils: String!) { packet { updatePdsContract(input: { id: $id, documentType: $documentType, contractDate: $contractDate, contractNumber: $contractNumber, snils: $snils }) { id approvalStatus assignee } } }",
+    "name": "updatePdsContract",
+    "body": "mutation updatePdsContract($input: _UpdatePdsContractInput!) { packet { updatePdsContract(input: $input) { id approvalStatus assignee } } }",
     "checkForAnyPrivilege": [
       "PdsContract:update"
-    ],
-    "checkSelects": [
-      {
-        "typeName": "PdsContract",
-        "orderValue": "0",
-        "conditionValue": "it.$id == ${id} && it.historyInitialized == true && it.approvalStatus == 'IN_WORK' && it.assignee == ${jwt:preferred_username} && it.documentType.$id == ${documentType}",
-        "description": "Only assigned operator may edit attributes; document type is bound to the original process"
-      }
     ]
   },
   {
     "name": "createAttachment",
-    "body": "mutation createAttachment($input: _CreateAttachmentInput!, $changeId: String!, $contractId: ID!, $change: _CreateAttachmentChangeInput!) { packet { createAttachment(input: $input) { id attachmentId logicalAttachmentId documentId fileName contentType size storageReference version current uploadedAt } createAttachmentChange(input: $change) { id } updatePdsContract(input: { id: $contractId, attachmentsHead: $changeId }) { id } } }",
+    "body": "mutation createAttachment($input: _CreateAttachmentInput!) { packet { createAttachment(input: $input) { id attachmentId logicalAttachmentId documentId fileName contentType size storageReference version current uploadedAt } } }",
     "allowEmptyChecks": false,
     "disableJwtVerification": false,
     "checkForAnyPrivilege": [
@@ -68,41 +60,23 @@
     ],
     "checkSelects": [
       {
-        "conditionValue": "it.documentId == ${input.documentId} && ((it.approvalStatus == 'CREATED' && it.createdBy == ${jwt:preferred_username}) || (it.approvalStatus == 'IN_WORK' && it.assignee == ${jwt:preferred_username})) && ${Integer:input.version} == 1 && ${input.logicalAttachmentId} == ${input.attachmentId}",
+        "conditionValue": "it.documentId == ${input.documentId} && ((it.approvalStatus == 'CREATED' && it.createdBy == ${jwt:preferred_username}) || (it.approvalStatus == 'IN_WORK' && it.assignee == ${jwt:preferred_username}))",
         "orderValue": "0",
         "typeName": "PdsContract",
         "description": "Only assigned operator can create attachments while document is in work"
-      },
-      {
-        "conditionValue": "it.$id == ${contractId} && it.documentId == ${change.documentId} && it.historyInitialized == true && ((it.attachmentsHead == null && ${change.previousId} == '' && ${change.previousKey} == it.documentId) || (it.attachmentsHead == ${change.previousId} && ${change.previousKey} == ${change.previousId}))",
-        "orderValue": "2",
-        "typeName": "PdsContract",
-        "description": "Composition must extend the current head; unique previousKey atomically prevents forks"
-      },
-      {
-        "conditionValue": "it.$id == ${contractId} && it.documentId == ${input.documentId}",
-        "orderValue": "3",
-        "typeName": "PdsContract",
-        "description": "Bind file operation to the same contract"
-      },
-      {
-        "conditionValue": "it.$id == ${contractId} && ${change.attachmentId} == ${input.attachmentId} && ${input.documentId} == ${change.documentId} && ${Boolean:change.removed} == false && ${change.changeKey} == ${changeId}",
-        "orderValue": "4",
-        "typeName": "PdsContract",
-        "description": "Composition must reference the newly created immutable file version"
       }
     ]
   },
   {
     "name": "searchAttachment",
-    "body": "query searchAttachment($cond: String, $offset: Int, $limit: Int) { searchAttachment(cond: $cond, offset: $offset, limit: $limit) { elems { id attachmentId logicalAttachmentId documentId fileName contentType size storageReference version current uploadedAt } count } }",
+    "body": "query searchAttachment($cond: String) { searchAttachment(cond: $cond) { elems { id attachmentId logicalAttachmentId documentId fileName contentType size storageReference version current uploadedAt } count } }",
     "checkForAnyPrivilege": [
       "Attachment:read"
     ]
   },
   {
     "name": "replaceAttachmentVersion",
-    "body": "mutation replaceAttachmentVersion($currentAttachmentId: ID!, $input: _CreateAttachmentInput!, $changeId: String!, $contractId: ID!, $change: _CreateAttachmentChangeInput!) { packet { updateAttachment(input: { id: $currentAttachmentId, current: false }) { id attachmentId logicalAttachmentId documentId version current } createAttachment(input: $input) { id attachmentId logicalAttachmentId documentId fileName contentType size storageReference version current uploadedAt } createAttachmentChange(input: $change) { id } updatePdsContract(input: { id: $contractId, attachmentsHead: $changeId }) { id } } }",
+    "body": "mutation replaceAttachmentVersion($currentAttachmentId: ID!, $input: _CreateAttachmentInput!) { packet { updateAttachment(input: { id: $currentAttachmentId, current: false }) { id attachmentId logicalAttachmentId documentId version current } createAttachment(input: $input) { id attachmentId logicalAttachmentId documentId fileName contentType size storageReference version current uploadedAt } } }",
     "allowEmptyChecks": false,
     "disableJwtVerification": false,
     "checkForAnyPrivilege": [
@@ -111,7 +85,7 @@
     ],
     "checkSelects": [
       {
-        "conditionValue": "it.$id == ${currentAttachmentId} && it.documentId == ${input.documentId} && it.current == true && (it.logicalAttachmentId == ${input.logicalAttachmentId} || (it.logicalAttachmentId == null && (it.attachmentId == ${input.logicalAttachmentId} || it.$id == ${input.logicalAttachmentId}))) && (${Integer:input.version} == it.version + 1 || (it.version == null && ${Integer:input.version} == 2))",
+        "conditionValue": "it.$id == ${currentAttachmentId} && it.documentId == ${input.documentId} && it.current == true",
         "orderValue": "0",
         "typeName": "Attachment",
         "description": "Only current attachment version can be replaced"
@@ -121,30 +95,12 @@
         "orderValue": "1",
         "typeName": "PdsContract",
         "description": "Only assigned operator can replace attachments while document is in work"
-      },
-      {
-        "conditionValue": "it.$id == ${contractId} && it.documentId == ${change.documentId} && it.historyInitialized == true && ((it.attachmentsHead == null && ${change.previousId} == '' && ${change.previousKey} == it.documentId) || (it.attachmentsHead == ${change.previousId} && ${change.previousKey} == ${change.previousId}))",
-        "orderValue": "2",
-        "typeName": "PdsContract",
-        "description": "Composition must extend the current head; unique previousKey atomically prevents forks"
-      },
-      {
-        "conditionValue": "it.$id == ${contractId} && it.documentId == ${input.documentId}",
-        "orderValue": "3",
-        "typeName": "PdsContract",
-        "description": "Bind file operation to the same contract"
-      },
-      {
-        "conditionValue": "it.$id == ${contractId} && ${change.attachmentId} == ${input.attachmentId} && ${input.documentId} == ${change.documentId} && ${Boolean:change.removed} == false && ${change.changeKey} == ${changeId}",
-        "orderValue": "4",
-        "typeName": "PdsContract",
-        "description": "Composition must reference the newly created immutable file version"
       }
     ]
   },
   {
     "name": "deleteAttachment",
-    "body": "mutation deleteAttachment($id: ID!, $documentId: String!, $changeId: String!, $contractId: ID!, $change: _CreateAttachmentChangeInput!) { packet { createAttachmentChange(input: $change) { id } updatePdsContract(input: { id: $contractId, attachmentsHead: $changeId }) { id } updateAttachment(input: { id: $id, current: false }) { id } } }",
+    "body": "mutation deleteAttachment($id: ID!, $documentId: String!) { packet { deleteAttachment(id: $id) } }",
     "allowEmptyChecks": false,
     "disableJwtVerification": false,
     "checkForAnyPrivilege": [
@@ -152,7 +108,7 @@
     ],
     "checkSelects": [
       {
-        "conditionValue": "it.$id == ${id} && it.documentId == ${documentId} && it.current == true && ${change.attachmentId} == it.$id && ${Boolean:change.removed} == true",
+        "conditionValue": "it.$id == ${id} && it.documentId == ${documentId}",
         "orderValue": "0",
         "typeName": "Attachment",
         "description": "Only attachments of the requested document can be deleted"
@@ -162,62 +118,6 @@
         "orderValue": "1",
         "typeName": "PdsContract",
         "description": "Only assigned operator can delete attachments while document is in work"
-      },
-      {
-        "conditionValue": "it.$id == ${contractId} && it.documentId == ${change.documentId} && it.historyInitialized == true && ((it.attachmentsHead == null && ${change.previousId} == '' && ${change.previousKey} == it.documentId) || (it.attachmentsHead == ${change.previousId} && ${change.previousKey} == ${change.previousId}))",
-        "orderValue": "2",
-        "typeName": "PdsContract",
-        "description": "Composition must extend the current head; unique previousKey atomically prevents forks"
-      },
-      {
-        "conditionValue": "it.$id == ${contractId} && it.documentId == ${documentId} && ${change.changeKey} == ${changeId}",
-        "orderValue": "3",
-        "typeName": "PdsContract",
-        "description": "Bind file operation to the same contract"
-      }
-    ]
-  },
-  {
-    "name": "documentStates",
-    "body": "query documentStates($id: ID!, $offset: Int, $limit: Int) { getStatesPdsContract(id: $id, offset: $offset, limit: $limit) { elems { sysHistNumber sysHistoryTime documentId documentType { id name } contractDate contractNumber snils approvalStatus createdBy createdAt assignee attachmentsHead historyInitialized } count } }",
-    "checkForAnyPrivilege": [
-      "PdsContract:read"
-    ]
-  },
-  {
-    "name": "attachmentComposition",
-    "body": "query attachmentComposition($cond: String, $offset: Int, $limit: Int) { searchAttachmentChange(cond: $cond, offset: $offset, limit: $limit) { elems { id changeKey documentId documentType previousId removed attachmentId baselineAttachments(offset: $offset, limit: $limit) { elems { attachmentId } count } } count } }",
-    "checkForAnyPrivilege": [
-      "PdsContract:read"
-    ]
-  },
-  {
-    "name": "updatePdsContract",
-    "body": "mutation updatePdsContract($input: _UpdatePdsContractInput!) { packet { updatePdsContract(input: $input) { id approvalStatus assignee } } }",
-    "checkForAnyPrivilege": [
-      "PdsContract:approve"
-    ],
-    "checkSelects": [
-      {
-        "typeName": "PdsContract",
-        "orderValue": "0",
-        "conditionValue": "it.$id == ${input.id} && ${input.documentId} == null && ${input.documentType} == null && ${input.contractDate} == null && ${input.contractNumber} == null && ${input.snils} == null && ${input.createdBy} == null && ${input.createdAt} == null && ${input.attachmentsHead} == null && ${Boolean:input.historyInitialized} == null",
-        "description": "Running BPM instances can update only workflow fields"
-      }
-    ]
-  },
-  {
-    "name": "initializeDocumentHistory",
-    "body": "mutation initializeDocumentHistory($input: _UpdatePdsContractInput!, $baseline: _CreateAttachmentChangeInput!, $links: [_CreateAttachmentBaselineInput!]!) { packet { createAttachmentChange(input: $baseline) { id } createManyAttachmentBaseline(input: $links) updatePdsContract(input: $input) { id historyInitialized } } }",
-    "checkForAnyPrivilege": [
-      "DocumentHistory:initialize"
-    ],
-    "checkSelects": [
-      {
-        "typeName": "PdsContract",
-        "orderValue": "0",
-        "conditionValue": "it.$id == ${input.id} && (it.historyInitialized == null || it.historyInitialized == false) && it.documentId == ${baseline.documentId} && ${input.attachmentsHead} == ${baseline.changeKey} && ${Boolean:input.historyInitialized} == true",
-        "description": "One-time baseline for existing documents during maintenance"
       }
     ]
   }

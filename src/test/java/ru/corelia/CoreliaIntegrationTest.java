@@ -535,14 +535,6 @@ class CoreliaIntegrationTest {
         JsonNode current = ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1/attachments", null), 200);
         assertEquals(1, current.size());
         assertEquals(next, text(current.get(0), "id"));
-        JsonNode historical =
-                ok(
-                        call(
-                                "GET",
-                                "/api/core/v1/documents/PDS_CONTRACT/doc-1/versions/1",
-                                null),
-                        200);
-        assertTrue(historical.path("attachments").isEmpty());
         var download = call("GET", "/api/core/v1/attachments/" + next, null);
         assertEquals(200, download.statusCode());
         assertEquals("содержимое", download.body());
@@ -699,15 +691,62 @@ class CoreliaIntegrationTest {
     }
 
     @Test
+    void emptyRegistryCreatesDocumentAndCompletesWorkflowWithAttachmentVersions() throws Exception {
+        platform.document = null;
+        platform.noTask = true;
+        assertEquals(0, number(ok(call("POST", "/api/core/v1/documents/PDS_CONTRACT/search", object()), 200), "total", -1));
+        JsonNode created = ok(call("POST", "/api/core/v1/documents/PDS_CONTRACT", validDocument()), 201);
+        String id = text(created, "id");
+        String path = "/api/core/v1/documents/PDS_CONTRACT/" + id;
+        assertEquals("CREATED", text(ok(call("GET", path, null), 200), "status"));
+        JsonNode attachment = ok(call("POST", path + "/attachments", upload("file.txt", "v1")), 201).get(0);
+        JsonNode replacement = ok(call("PUT", "/api/core/v1/attachments/" + text(attachment, "id"), upload("file.txt", "v2")), 200);
+        assertEquals(2, number(replacement, "version", 0));
+        for (String status : List.of("IN_WORK", "ON_APPROVAL", "NEEDS_REVISION", "ON_APPROVAL", "APPROVED")) {
+            platform.noTask = false;
+            platform.task.put("status", "NEW");
+            platform.task.set("completions", object("options", List.of(
+                    object("label", status, "result", object("approvalStatus", status)))));
+            JsonNode updated = ok(call("POST", "/api/core/v1/tasks/" + id + "/action", object("approvalStatus", status)), 200);
+            assertEquals(status, text(updated, "approvalStatus"));
+            assertEquals(id, text(updated, "id"));
+            assertEquals(1, updated.path("attachments").size());
+        }
+        assertEquals(text(attachment, "id"), text(ok(call("GET", "/api/core/v1/attachments/" + text(replacement, "id") + "/versions", null), 200).get(0), "id"));
+    }
+
+    @Test
+    void stableReactCardCanCompleteByDocumentId() throws Exception {
+        JsonNode card = ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1", null), 200);
+        assertEquals(card.path("workflow").path("availableActions"), card.path("availableActions"));
+        assertEquals("operator", text(card.path("executor"), "login"));
+        JsonNode updated = ok(call("POST", "/api/core/v1/tasks/doc-1/action",
+                object("approvalStatus", "APPROVED")), 200);
+        assertEquals("doc-1", text(updated, "id"));
+        assertEquals("PDS_CONTRACT", text(updated, "documentTypeId"));
+        assertEquals("PDS-001", text(updated, "contractNumber"));
+        assertEquals("APPROVED", text(updated, "approvalStatus"));
+        assertTrue(updated.path("availableActions").isEmpty());
+        assertTrue(updated.path("executor").isNull());
+        assertTrue(platform.calls.stream().anyMatch(c -> c.path().endsWith("usertasks:complete")
+                && c.json().path("userTaskIds").get(0).asString().equals("task-1")));
+    }
+
+    @Test
+    void legacyRoutesAreAbsent() throws Exception {
+        for (String path : List.of("/api/documents", "/api/tasks", "/api/auth/me", "/api/pds-contracts"))
+            ok(call("GET", path, null), 404);
+    }
+
+    @Test
     void documentContractWorksWithoutExternalConfiguration() throws Exception {
         JsonNode catalog = ok(call("GET", "/api/core/v1/document-types", null), 200);
         assertEquals(1, number(catalog, "total", 0));
         assertEquals("PDS_CONTRACT", text(catalog.path("items").get(0), "code"));
         JsonNode document = ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1", null), 200);
         assertTrue(document.path("attributes").has("contractNumber"));
-        JsonNode versions = ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1/versions", null), 200);
-        assertEquals(1, versions.size());
-        assertEquals(1, versions.get(0).path("version").asInt());
+        ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1/versions", null), 404);
+        ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1/versions/1", null), 404);
         JsonNode updated =
                 ok(
                         call(
