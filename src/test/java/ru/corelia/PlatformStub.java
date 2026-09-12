@@ -41,6 +41,10 @@ final class PlatformStub implements AutoCloseable {
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     final KeyPair keyPair;
     final List<Call> calls = new CopyOnWriteArrayList<>();
+    final Map<String, ObjectNode> documentVersions = new ConcurrentHashMap<>();
+    final Map<String, ObjectNode> documentCommands = new ConcurrentHashMap<>();
+    volatile boolean failVersionCommit;
+    volatile boolean loseVersionResponse;
     final Map<String, ObjectNode> attachments = new ConcurrentHashMap<>();
     final AtomicInteger jwksCalls = new AtomicInteger();
     volatile String kid = "key-1";
@@ -80,6 +84,7 @@ final class PlatformStub implements AutoCloseable {
     void reset() {
         calls.clear();
         attachments.clear();
+        documentVersions.clear(); documentCommands.clear(); failVersionCommit = false; loseVersionResponse = false;
         graphqlStatus = 0;
         graphqlErrors = false;
         processIncident = false;
@@ -348,7 +353,7 @@ final class PlatformStub implements AutoCloseable {
                                         failedOperation ? "DENIED" : "SUCCESS"))));
     }
 
-    private void graphql(HttpExchange exchange, JsonNode body) throws IOException {
+    private synchronized void graphql(HttpExchange exchange, JsonNode body) throws IOException {
         if (graphqlStatus != 0) {
             json(exchange, graphqlStatus, object("message", "Ошибка DataSpace"));
             return;
@@ -385,7 +390,72 @@ final class PlatformStub implements AutoCloseable {
         }
         JsonNode variables = body.path("variables");
         JsonNode result;
-        if (query.startsWith("query searchPdsContract"))
+        if (name.startsWith("commitDocument") || name.equals("initializeDocumentVersion")) {
+            if (query.contains("@include") || query.contains("@skip"))
+                throw new IllegalArgumentException("Conditional packet commands are not supported by this contract");
+            var declarations = java.util.regex.Pattern.compile("\\$(\\w+):\\s*(_\\w+Input)!").matcher(query);
+            while (declarations.find()) {
+                String variable = declarations.group(1), inputType = declarations.group(2);
+                JsonNode input = variables.path(variable);
+                if (!input.isObject()) throw new IllegalArgumentException("Missing input " + variable);
+                if (inputType.startsWith("_Update") && text(input, "id").isEmpty())
+                    throw new IllegalArgumentException("Missing update ID in " + variable);
+                if (Set.of("_CreatePdsContractVersionInput", "_CreateDocumentCommandInput").contains(inputType)
+                        && text(input, "document").isEmpty())
+                    throw new IllegalArgumentException("Missing non-null document in " + variable);
+                if ("unused".equals(text(input, "id"))) throw new IllegalArgumentException("Placeholder ID");
+            }
+        }
+        if (name.equals("searchPdsContractVersion")) {
+            result = object("searchPdsContractVersion", object("elems", new ArrayList<>(documentVersions.values()), "count", documentVersions.size()));
+        } else if (name.equals("searchDocumentCommand")) {
+            String cond = text(variables, "cond");
+            var rows = documentCommands.values().stream().filter(c -> cond.contains(text(c, "commandKey"))).toList();
+            result = object("searchDocumentCommand", object("elems", rows, "count", rows.size()));
+        } else if (name.equals("initializeDocumentVersion")) {
+            if (number(document, "version", 0) != 0) {
+                json(exchange, 200, object("errors", List.of(object("message", "COMPARE_NOT_EQUAL")))); return;
+            }
+            var version = copy(variables.path("version")); version.put("id", "version-1");
+            documentVersions.put("version-1", version);
+            document.put("version", 1).put("changeToken", text(variables, "token"));
+            result = object("packet", object("updatePdsContract", object("id", text(document, "id"))));
+        } else if (Set.of("commitDocumentAttributes", "commitDocumentNoChange", "commitDocumentFileUpload", "commitDocumentFileReplace", "commitDocumentFileDelete").contains(name)) {
+            if (!"true".equals(exchange.getRequestHeaders().getFirst("X-DSPC-multiaggregate")))
+                throw new IllegalStateException("Missing multiaggregate header");
+            boolean matches = true;
+            for (var field : variables.path("compare").properties()) {
+                JsonNode actual = document.get(field.getKey());
+                if (!java.util.Objects.equals(actual == null ? MAPPER.nullNode() : actual, field.getValue())) matches = false;
+            }
+            if (!matches) {
+                json(exchange, 200, object("errors", List.of(object("message", "COMPARE_NOT_EQUAL", "extensions", object("code", "COMPARE_NOT_EQUAL"))))); return;
+            }
+            if (failVersionCommit) {
+                json(exchange, 200, object("errors", List.of(object("message", "Injected transaction failure")))); return;
+            }
+            String key = text(variables.path("command"), "commandKey");
+            if (documentCommands.containsKey(key)) throw new IllegalStateException("Duplicate command");
+            if (variables.has("version")) {
+                var version = copy(variables.path("version"));
+                String versionId = "version-" + number(version, "version", 0);
+                if (documentVersions.containsKey(versionId)) throw new IllegalStateException("Duplicate version");
+                version.put("id", versionId); documentVersions.put(versionId, version);
+            }
+            if (variables.has("previous")) {
+                var previous = variables.path("previous");
+                previous.properties().forEach(e -> documentVersions.get(text(previous, "id")).set(e.getKey(), e.getValue()));
+            }
+            if (variables.has("file")) {
+                var file = copy(variables.path("file")); String fileId = "model-" + text(file, "attachmentId");
+                file.put("id", fileId); attachments.put(fileId, file);
+            }
+            if (variables.has("retired")) attachments.get(text(variables.path("retired"), "id")).put("current", false);
+            variables.path("document").properties().forEach(e -> document.set(e.getKey(), e.getValue()));
+            documentCommands.put(key, copy(variables.path("command")));
+            if (loseVersionResponse) { loseVersionResponse = false; json(exchange, 503, object("message", "Response lost after commit")); return; }
+            result = object("packet", object("updatePdsContract", object("id", text(document, "id"))));
+        } else if (query.startsWith("query searchPdsContract"))
             result = object("searchPdsContract", object("elems", document == null ? List.of() : List.of(document), "count", document == null ? 0 : 1));
         else if (query.startsWith("query searchDocumentProcessSettings"))
             result =
