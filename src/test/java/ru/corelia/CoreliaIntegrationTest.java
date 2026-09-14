@@ -124,6 +124,13 @@ class CoreliaIntegrationTest {
 
     private HttpResponse<String> call(String method, String path, JsonNode payload)
             throws Exception {
+        if (method.equals("PATCH") && payload != null && !payload.has("requestId") && payload.path("attributes").isObject()
+                && !payload.path("attributes").path("snils").isNull()) {
+            JsonNode card = ok(raw("GET", path, null, token), 200);
+            payload = copy(payload).put("requestId", UUID.randomUUID().toString())
+                .put("expectedVersion", number(card, "version", 1)).put("changeToken", text(card, "changeToken"));
+        }
+        if (method.equals("DELETE") && path.contains("/attachments/") && !path.contains("?")) path += "?requestId=" + UUID.randomUUID();
         return raw(method, path, payload == null ? null : write(payload), token);
     }
 
@@ -157,6 +164,7 @@ class CoreliaIntegrationTest {
 
     private JsonNode upload(String name, String text) {
         return object(
+                "requestId", UUID.randomUUID().toString(),
                 "attachments",
                 List.of(
                         object(
@@ -422,7 +430,9 @@ class CoreliaIntegrationTest {
         assertFalse(
                 platform.calls.stream()
                         .filter(call -> call.path().equals("/graphql"))
-                        .anyMatch(call -> text(call.json(), "query").startsWith("mutation")));
+                        .anyMatch(call -> text(call.json(), "query").startsWith("mutation")
+                            && !text(call.json(), "query").startsWith("mutation commitDocument")
+                            && !text(call.json(), "query").startsWith("mutation initializeDocumentVersion")));
     }
 
     @Test
@@ -458,11 +468,11 @@ class CoreliaIntegrationTest {
                                 call ->
                                         call.path().equals("/graphql")
                                                 && text(call.json(), "query")
-                                                        .startsWith("mutation update"))
+                                                        .startsWith("mutation commitDocument"))
                         .findFirst()
                         .orElseThrow();
-        assertEquals("model-1", text(mutation.json().path("variables").path("input"), "id"));
-        assertFalse(mutation.json().path("variables").path("input").has("approvalStatus"));
+        assertEquals("model-1", text(mutation.json().path("variables").path("document"), "id"));
+        assertFalse(mutation.json().path("variables").path("document").has("approvalStatus"));
     }
 
     @Test
@@ -516,7 +526,8 @@ class CoreliaIntegrationTest {
                         .findFirst()
                         .orElseThrow();
         assertTrue(dam.body().contains("name=\"size\""));
-        assertTrue(dam.body().contains("documents/doc-1/" + first + "/v1/документ.txt"));
+        assertTrue(dam.body().contains("documents/doc-1/uploads/" + first + "/"));
+        assertTrue(dam.body().contains("документ.txt"));
         assertTrue(dam.body().contains("первая версия"));
         assertEquals("Bearer " + token, dam.authorization());
         JsonNode replaced =
@@ -624,7 +635,9 @@ class CoreliaIntegrationTest {
         assertFalse(
                 platform.calls.stream()
                         .filter(call -> call.path().equals("/graphql"))
-                        .anyMatch(call -> text(call.json(), "query").startsWith("mutation")));
+                        .anyMatch(call -> text(call.json(), "query").startsWith("mutation")
+                            && !text(call.json(), "query").startsWith("mutation commitDocument")
+                            && !text(call.json(), "query").startsWith("mutation initializeDocumentVersion")));
     }
 
     @Test
@@ -700,6 +713,8 @@ class CoreliaIntegrationTest {
         String path = "/api/core/v1/documents/PDS_CONTRACT/" + id;
         assertEquals("CREATED", text(ok(call("GET", path, null), 200), "status"));
         JsonNode attachment = ok(call("POST", path + "/attachments", upload("file.txt", "v1")), 201).get(0);
+        platform.document.put("approvalStatus", "IN_WORK"); platform.noTask = false;
+        platform.task.put("status", "STARTED").put("assignee", "operator");
         JsonNode replacement = ok(call("PUT", "/api/core/v1/attachments/" + text(attachment, "id"), upload("file.txt", "v2")), 200);
         assertEquals(2, number(replacement, "version", 0));
         for (String status : List.of("IN_WORK", "ON_APPROVAL", "NEEDS_REVISION", "ON_APPROVAL", "APPROVED")) {
@@ -745,8 +760,8 @@ class CoreliaIntegrationTest {
         assertEquals("PDS_CONTRACT", text(catalog.path("items").get(0), "code"));
         JsonNode document = ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1", null), 200);
         assertTrue(document.path("attributes").has("contractNumber"));
-        ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1/versions", null), 404);
-        ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1/versions/1", null), 404);
+        ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1/versions", null), 200);
+        ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1/versions/1", null), 200);
         JsonNode updated =
                 ok(
                         call(
@@ -789,6 +804,103 @@ class CoreliaIntegrationTest {
         assertEquals("IN_WORK", text(document, "status"));
         assertEquals("operator", text(document.path("workflow").path("executor"), "login"));
         assertEquals("document_operator", text(document.path("workflow").path("executor"), "role"));
+    }
+
+    private JsonNode versionPatch(JsonNode card, String number) {
+        return object("attributes", object("contractNumber", number), "expectedVersion", number(card, "version", 1),
+                "changeToken", text(card, "changeToken"), "requestId", UUID.randomUUID().toString());
+    }
+
+    @Test
+    void documentVersionsFreezeAttachmentsAndPreserveTheRunningProcess() throws Exception {
+        String path = "/api/core/v1/documents/PDS_CONTRACT/doc-1";
+        JsonNode originalTask = platform.task.deepCopy();
+        JsonNode a1 = ok(call("POST", path + "/attachments", upload("file.txt", "one")), 201).get(0);
+        JsonNode a2 = ok(call("PUT", "/api/core/v1/attachments/" + text(a1, "id"), upload("file.txt", "two")), 200);
+        JsonNode a3 = ok(call("PUT", "/api/core/v1/attachments/" + text(a2, "id"), upload("file.txt", "three")), 200);
+        JsonNode first = ok(call("GET", path, null), 200);
+        JsonNode patch = versionPatch(first, "VERSION-2");
+        JsonNode second = ok(call("PATCH", path, patch), 200);
+        assertEquals(2, number(second, "version", 0));
+        assertEquals(second, ok(call("PATCH", path, patch), 200), "Retry returns the committed response");
+        JsonNode a4 = ok(call("PUT", "/api/core/v1/attachments/" + text(a3, "id"), upload("file.txt", "four")), 200);
+        JsonNode v1 = ok(call("GET", path + "/versions/1", null), 200);
+        JsonNode v2 = ok(call("GET", path + "/versions/2", null), 200);
+        assertEquals("PDS-001", text(v1.path("attributes"), "contractNumber"));
+        assertEquals("VERSION-2", text(v2.path("attributes"), "contractNumber"));
+        assertEquals(text(a3, "id"), text(v1.path("attachments").get(0), "id"));
+        assertEquals(text(a4, "id"), text(v2.path("attachments").get(0), "id"));
+        assertEquals(2, ok(call("GET", "/api/core/v1/attachments/" + text(a3, "id") + "/versions", null), 200).size());
+        assertEquals(originalTask, platform.task);
+        assertEquals("model-1", text(platform.document, "id"));
+        assertFalse(platform.calls.stream().anyMatch(c -> c.method().equals("POST") && (c.path().endsWith(":start") || c.path().endsWith("usertasks:complete"))));
+        ok(call("DELETE", "/api/core/v1/attachments/" + text(a4, "id"), null), 200);
+        assertTrue(ok(call("GET", path, null), 200).path("attachments").isEmpty());
+        assertEquals(text(a3, "id"), text(ok(call("GET", path + "/versions/1", null), 200).path("attachments").get(0), "id"));
+        assertEquals(200, call("GET", "/api/core/v1/attachments/" + text(a3, "id"), null).statusCode());
+        assertEquals(4, platform.attachments.size());
+        ok(call("POST", "/api/core/v1/tasks/doc-1/action", object("approvalStatus", "APPROVED")), 200);
+        assertEquals("APPROVED", text(platform.document, "approvalStatus"));
+        assertEquals(2, number(platform.document, "version", 0));
+    }
+
+    @Test
+    void versionCommandsHandleNoOpConflictAndReusedRequestId() throws Exception {
+        String path = "/api/core/v1/documents/PDS_CONTRACT/doc-1";
+        JsonNode card = ok(call("GET", path, null), 200);
+        JsonNode unchanged = ok(call("PATCH", path, versionPatch(card, " PDS-001 ")), 200);
+        assertEquals(1, number(unchanged, "version", 0));
+        JsonNode patch = versionPatch(unchanged, "NEXT");
+        ok(call("PATCH", path, patch), 200);
+        ok(call("PATCH", path, versionPatch(unchanged, "STALE")), 409);
+        var reused = copy(patch); reused.set("attributes", object("contractNumber", "DIFFERENT"));
+        ok(call("PATCH", path, reused), 409);
+        assertEquals(2, platform.documentVersions.size());
+        ok(raw("PATCH", path, write(object("attributes", object("contractNumber", "NO-KEY"))), token), 400);
+    }
+
+    @Test
+    void failedAndLostCommitResponsesDoNotLoseOrDuplicateVersions() throws Exception {
+        String path = "/api/core/v1/documents/PDS_CONTRACT/doc-1";
+        JsonNode card = ok(call("GET", path, null), 200);
+        JsonNode patch = versionPatch(card, "AFTER-RETRY");
+        platform.failVersionCommit = true;
+        ok(call("PATCH", path, patch), 502);
+        assertEquals(1, platform.documentVersions.size());
+        assertEquals("PDS-001", text(platform.document, "contractNumber"));
+        platform.failVersionCommit = false; platform.loseVersionResponse = true;
+        JsonNode saved = ok(call("PATCH", path, patch), 200);
+        assertEquals(saved, ok(call("PATCH", path, patch), 200));
+        assertEquals(2, platform.documentVersions.size());
+    }
+
+    @Test
+    void concurrentEditorsCannotBothCommitTheSameBaseVersion() throws Exception {
+        String path = "/api/core/v1/documents/PDS_CONTRACT/doc-1";
+        JsonNode card = ok(call("GET", path, null), 200);
+        var requests = List.of(versionPatch(card, "FIRST"), versionPatch(card, "SECOND"));
+        var futures = requests.stream().map(body -> http.sendAsync(HttpRequest.newBuilder(URI.create(base + path))
+            .header("Authorization", "Bearer " + token).header("Content-Type", "application/json")
+            .method("PATCH", HttpRequest.BodyPublishers.ofString(write(body))).build(), HttpResponse.BodyHandlers.ofString())).toList();
+        var statuses = futures.stream().map(f -> f.join().statusCode()).sorted().toList();
+        assertEquals(List.of(200, 409), statuses);
+        assertEquals(2, platform.documentVersions.size());
+    }
+
+    @Test
+    void attachmentRetryIsIdempotentAndInvalidatesAnOpenEditor() throws Exception {
+        String path = "/api/core/v1/documents/PDS_CONTRACT/doc-1";
+        JsonNode card = ok(call("GET", path, null), 200);
+        JsonNode upload = upload("file.txt", "same bytes");
+        JsonNode uploaded = ok(call("POST", path + "/attachments", upload), 201);
+        assertEquals(uploaded, ok(call("POST", path + "/attachments", upload), 201));
+        assertEquals(1, platform.attachments.size());
+        ok(call("PATCH", path, versionPatch(card, "STALE-AFTER-FILE")), 409);
+        assertEquals(1, number(platform.document, "version", 0));
+        platform.document.put("approvalStatus", "APPROVED");
+        JsonNode current = ok(call("GET", path, null), 200);
+        ok(call("PATCH", path, versionPatch(current, "FORBIDDEN")), 409);
+        assertEquals(1, platform.documentVersions.size());
     }
 
     private ru.corelia.transport.ServiceClient peer(String service) throws Exception {
