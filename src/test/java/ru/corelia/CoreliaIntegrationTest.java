@@ -395,7 +395,7 @@ class CoreliaIntegrationTest {
 
     @Test
     void terminalDocumentHasNoActionsAndNoTaskCalls() throws Exception {
-        platform.document.put("approvalStatus", "APPROVED");
+        platform.details().put("status", "APPROVED");
         JsonNode result = ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1", null), 200);
         assertTrue(result.path("workflow").path("availableActions").isEmpty());
         assertTrue(result.path("workflow").path("executor").isNull());
@@ -404,7 +404,7 @@ class CoreliaIntegrationTest {
 
     @Test
     void queuedDocumentHasExpectedExecutor() throws Exception {
-        platform.document.put("approvalStatus", "ON_APPROVAL");
+        platform.details().put("status", "ON_APPROVAL");
         platform.task.put("status", "NEW").putNull("assignee").put("executorRole", "approver");
         JsonNode result = ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1", null), 200);
         assertEquals("approver", text(result.path("workflow").path("executor"), "role"));
@@ -472,7 +472,20 @@ class CoreliaIntegrationTest {
                         .findFirst()
                         .orElseThrow();
         assertEquals("model-1", text(mutation.json().path("variables").path("document"), "id"));
-        assertFalse(mutation.json().path("variables").path("document").has("approvalStatus"));
+        JsonNode variables = mutation.json().path("variables");
+        assertEquals("pds-1", text(variables.path("details"), "id"));
+        assertFalse(variables.path("document").has("contractNumber"));
+        assertFalse(variables.path("details").has("status"));
+        assertFalse(variables.path("document").has("status"));
+        JsonNode snapshot = variables.path("version");
+        assertEquals("model-1", text(snapshot, "document"));
+        assertEquals(1, number(snapshot, "schemaVersion", 0));
+        assertFalse(snapshot.has("contractNumber"));
+        JsonNode attributes = parse(text(snapshot, "attributes"));
+        assertEquals("CHANGED", text(attributes, "contractNumber"));
+        assertFalse(attributes.has("status"));
+        assertFalse(attributes.has("createdBy"));
+        assertFalse(platform.details().has("version"));
     }
 
     @Test
@@ -649,7 +662,7 @@ class CoreliaIntegrationTest {
         platform.failedOperation = true;
         ok(call("POST", "/api/core/v1/tasks/task-1/start", object()), 502);
         ok(call("POST", "/api/core/v1/tasks/task-1/action", object("actionCode", "APPROVED")), 502);
-        assertEquals("IN_WORK", text(platform.document, "approvalStatus"));
+        assertEquals("IN_WORK", text(platform.details(), "status"));
     }
 
     @Test
@@ -713,7 +726,7 @@ class CoreliaIntegrationTest {
         String path = "/api/core/v1/documents/PDS_CONTRACT/" + id;
         assertEquals("CREATED", text(ok(call("GET", path, null), 200), "status"));
         JsonNode attachment = ok(call("POST", path + "/attachments", upload("file.txt", "v1")), 201).get(0);
-        platform.document.put("approvalStatus", "IN_WORK"); platform.noTask = false;
+        platform.details().put("status", "IN_WORK"); platform.noTask = false;
         platform.task.put("status", "STARTED").put("assignee", "operator");
         JsonNode replacement = ok(call("PUT", "/api/core/v1/attachments/" + text(attachment, "id"), upload("file.txt", "v2")), 200);
         assertEquals(2, number(replacement, "version", 0));
@@ -723,7 +736,7 @@ class CoreliaIntegrationTest {
             platform.task.set("completions", object("options", List.of(
                     object("label", status, "result", object("approvalStatus", status)))));
             JsonNode updated = ok(call("POST", "/api/core/v1/tasks/" + id + "/action", object("approvalStatus", status)), 200);
-            assertEquals(status, text(updated, "approvalStatus"));
+            assertEquals(status, text(updated, "status"));
             assertEquals(id, text(updated, "id"));
             assertEquals(1, updated.path("attachments").size());
         }
@@ -740,7 +753,7 @@ class CoreliaIntegrationTest {
         assertEquals("doc-1", text(updated, "id"));
         assertEquals("PDS_CONTRACT", text(updated, "documentTypeId"));
         assertEquals("PDS-001", text(updated, "contractNumber"));
-        assertEquals("APPROVED", text(updated, "approvalStatus"));
+        assertEquals("APPROVED", text(updated, "status"));
         assertTrue(updated.path("availableActions").isEmpty());
         assertTrue(updated.path("executor").isNull());
         assertTrue(platform.calls.stream().anyMatch(c -> c.path().endsWith("usertasks:complete")
@@ -790,7 +803,7 @@ class CoreliaIntegrationTest {
 
     @Test
     void modernTakeInWorkUpdatesCardAndStartsOperatorTask() throws Exception {
-        platform.document.put("approvalStatus", "CREATED");
+        platform.details().put("status", "CREATED");
         platform.task.put("status", "NEW").putNull("assignee");
         platform.returnFollowUp = true;
 
@@ -840,7 +853,7 @@ class CoreliaIntegrationTest {
         assertEquals(200, call("GET", "/api/core/v1/attachments/" + text(a3, "id"), null).statusCode());
         assertEquals(4, platform.attachments.size());
         ok(call("POST", "/api/core/v1/tasks/doc-1/action", object("approvalStatus", "APPROVED")), 200);
-        assertEquals("APPROVED", text(platform.document, "approvalStatus"));
+        assertEquals("APPROVED", text(platform.details(), "status"));
         assertEquals(2, number(platform.document, "version", 0));
     }
 
@@ -867,7 +880,7 @@ class CoreliaIntegrationTest {
         platform.failVersionCommit = true;
         ok(call("PATCH", path, patch), 502);
         assertEquals(1, platform.documentVersions.size());
-        assertEquals("PDS-001", text(platform.document, "contractNumber"));
+        assertEquals("PDS-001", text(platform.details(), "contractNumber"));
         platform.failVersionCommit = false; platform.loseVersionResponse = true;
         JsonNode saved = ok(call("PATCH", path, patch), 200);
         assertEquals(saved, ok(call("PATCH", path, patch), 200));
@@ -897,7 +910,7 @@ class CoreliaIntegrationTest {
         assertEquals(1, platform.attachments.size());
         ok(call("PATCH", path, versionPatch(card, "STALE-AFTER-FILE")), 409);
         assertEquals(1, number(platform.document, "version", 0));
-        platform.document.put("approvalStatus", "APPROVED");
+        platform.details().put("status", "APPROVED");
         JsonNode current = ok(call("GET", path, null), 200);
         ok(call("PATCH", path, versionPatch(current, "FORBIDDEN")), 409);
         assertEquals(1, platform.documentVersions.size());

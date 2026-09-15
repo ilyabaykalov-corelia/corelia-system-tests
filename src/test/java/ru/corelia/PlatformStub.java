@@ -77,6 +77,16 @@ final class PlatformStub implements AutoCloseable {
         reset();
     }
 
+    private void nestDetails(String id) {
+        var details = object("id", id);
+        for (String field : List.of("contractDate", "contractNumber", "snils", "status")) {
+            details.set(field, document.path(field)); document.remove(field);
+        }
+        details.set("document", object("id", text(document, "id")));
+        document.set("pdsContract", details);
+    }
+    ObjectNode details() { return (ObjectNode) document.path("pdsContract"); }
+
     String base() {
         return "http://127.0.0.1:" + server.getAddress().getPort();
     }
@@ -108,12 +118,13 @@ final class PlatformStub implements AutoCloseable {
                         "PDS-001",
                         "snils",
                         "123-456-789 00",
-                        "approvalStatus",
+                        "status",
                         "IN_WORK",
                         "createdBy",
                         "operator",
                         "createdAt",
                         "2026-09-01T10:00:00Z");
+        nestDetails("pds-1");
         task =
                 object(
                         "id",
@@ -251,9 +262,10 @@ final class PlatformStub implements AutoCloseable {
                 processCreatedId = text(call.json().path("payload"), "documentId");
                 if (!processIncident) {
                     document = copy(call.json().path("payload"));
-                    document.put("id", "model-new").put("approvalStatus", "CREATED")
+                    document.put("id", "model-new").put("status", "CREATED")
                             .put("contractNumber", "FROM-PLATFORM");
                     document.set("documentType", object("id", "PDS_CONTRACT", "name", "Договор ПДС"));
+                    nestDetails("pds-new");
                     task.set("attributes", object("documentId", object("value", processCreatedId)));
                     task.put("status", "NEW").putNull("assignee");
                     noTask = false;
@@ -302,8 +314,8 @@ final class PlatformStub implements AutoCloseable {
                 operation(exchange, text(call.json().path("userTaskIds").get(0)));
             } else if (path.endsWith("usertasks:complete")) {
                 if (!failedOperation) {
-                    document.put(
-                            "approvalStatus",
+                    details().put(
+                            "status",
                             text(call.json().path("parameters"), "approvalStatus"));
                     noTask = !returnFollowUp;
                     if (returnFollowUp) {
@@ -400,14 +412,14 @@ final class PlatformStub implements AutoCloseable {
                 if (!input.isObject()) throw new IllegalArgumentException("Missing input " + variable);
                 if (inputType.startsWith("_Update") && text(input, "id").isEmpty())
                     throw new IllegalArgumentException("Missing update ID in " + variable);
-                if (Set.of("_CreatePdsContractVersionInput", "_CreateDocumentCommandInput").contains(inputType)
+                if (Set.of("_CreateDocumentVersionInput", "_CreateDocumentCommandInput").contains(inputType)
                         && text(input, "document").isEmpty())
                     throw new IllegalArgumentException("Missing non-null document in " + variable);
                 if ("unused".equals(text(input, "id"))) throw new IllegalArgumentException("Placeholder ID");
             }
         }
-        if (name.equals("searchPdsContractVersion")) {
-            result = object("searchPdsContractVersion", object("elems", new ArrayList<>(documentVersions.values()), "count", documentVersions.size()));
+        if (name.equals("searchDocumentVersion")) {
+            result = object("searchDocumentVersion", object("elems", new ArrayList<>(documentVersions.values()), "count", documentVersions.size()));
         } else if (name.equals("searchDocumentCommand")) {
             String cond = text(variables, "cond");
             var rows = documentCommands.values().stream().filter(c -> cond.contains(text(c, "commandKey"))).toList();
@@ -419,7 +431,7 @@ final class PlatformStub implements AutoCloseable {
             var version = copy(variables.path("version")); version.put("id", "version-1");
             documentVersions.put("version-1", version);
             document.put("version", 1).put("changeToken", text(variables, "token"));
-            result = object("packet", object("updatePdsContract", object("id", text(document, "id"))));
+            result = object("packet", object("updateDocument", object("id", text(document, "id"))));
         } else if (Set.of("commitDocumentAttributes", "commitDocumentNoChange", "commitDocumentFileUpload", "commitDocumentFileReplace", "commitDocumentFileDelete").contains(name)) {
             if (!"true".equals(exchange.getRequestHeaders().getFirst("X-DSPC-multiaggregate")))
                 throw new IllegalStateException("Missing multiaggregate header");
@@ -428,6 +440,13 @@ final class PlatformStub implements AutoCloseable {
                 JsonNode actual = document.get(field.getKey());
                 if (!java.util.Objects.equals(actual == null ? MAPPER.nullNode() : actual, field.getValue())) matches = false;
             }
+            for (var field : variables.path("detailsCompare").properties()) {
+                if (!java.util.Objects.equals(details().get(field.getKey()), field.getValue())) matches = false;
+            }
+            if (!text(variables.path("document"), "id").equals(text(document, "id")))
+                throw new IllegalArgumentException("Wrong Document ID");
+            if (variables.has("details") && !text(variables.path("details"), "id").equals(text(details(), "id")))
+                throw new IllegalArgumentException("Wrong PdsContract ID");
             if (!matches) {
                 json(exchange, 200, object("errors", List.of(object("message", "COMPARE_NOT_EQUAL", "extensions", object("code", "COMPARE_NOT_EQUAL"))))); return;
             }
@@ -451,12 +470,13 @@ final class PlatformStub implements AutoCloseable {
                 file.put("id", fileId); attachments.put(fileId, file);
             }
             if (variables.has("retired")) attachments.get(text(variables.path("retired"), "id")).put("current", false);
+            variables.path("details").properties().forEach(e -> details().set(e.getKey(), e.getValue()));
             variables.path("document").properties().forEach(e -> document.set(e.getKey(), e.getValue()));
             documentCommands.put(key, copy(variables.path("command")));
             if (loseVersionResponse) { loseVersionResponse = false; json(exchange, 503, object("message", "Response lost after commit")); return; }
-            result = object("packet", object("updatePdsContract", object("id", text(document, "id"))));
-        } else if (query.startsWith("query searchPdsContract"))
-            result = object("searchPdsContract", object("elems", document == null ? List.of() : List.of(document), "count", document == null ? 0 : 1));
+            result = object("packet", object("updateDocument", object("id", text(document, "id"))));
+        } else if (query.startsWith("query searchDocument("))
+            result = object("searchDocument", object("elems", document == null ? List.of() : List.of(document), "count", document == null ? 0 : 1));
         else if (query.startsWith("query searchDocumentProcessSettings"))
             result =
                     object(
@@ -493,7 +513,7 @@ final class PlatformStub implements AutoCloseable {
                     .forEach(
                             entry -> {
                                 if (!Set.of("id", "documentType").contains(entry.getKey()))
-                                    document.set(entry.getKey(), entry.getValue());
+                                    details().set(entry.getKey(), entry.getValue());
                             });
             result =
                     object(
@@ -503,8 +523,8 @@ final class PlatformStub implements AutoCloseable {
                                     object(
                                             "id",
                                             "model-1",
-                                            "approvalStatus",
-                                            text(document, "approvalStatus"))));
+                                            "status",
+                                            text(details(), "status"))));
         } else if (query.startsWith("query searchAttachment"))
             result =
                     object(
