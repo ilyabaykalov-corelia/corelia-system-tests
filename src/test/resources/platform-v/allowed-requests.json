@@ -125,21 +125,21 @@
     "name": "searchDocumentVersion",
     "body": "query searchDocumentVersion($cond: String, $offset: Int, $limit: Int) { searchDocumentVersion(cond: $cond, offset: $offset, limit: $limit) { elems { id documentId version schemaVersion attributes attachments createdBy createdAt closedAt } count } }",
     "checkForAnyPrivilege": [
-      "PdsContract:read"
+      "Document:read"
     ]
   },
   {
     "name": "searchDocumentCommand",
     "body": "query searchDocumentCommand($cond: String) { searchDocumentCommand(cond: $cond) { elems { commandKey requestHash response } count } }",
     "checkForAnyPrivilege": [
-      "PdsContract:read"
+      "Document:read"
     ]
   },
   {
     "name": "initializeDocumentVersion",
     "body": "mutation initializeDocumentVersion($id: ID!, $token: String!, $compare: _CompareDocumentInput!, $version: _CreateDocumentVersionInput!) { packet { updateDocument(input: { id: $id, version: 1, changeToken: $token }, compare: $compare) { id } createDocumentVersion(input: $version) { id } } }",
     "checkForAnyPrivilege": [
-      "PdsContract:read"
+      "Document:read"
     ],
     "checkSelects": [
       {
@@ -187,9 +187,30 @@
   },
   {
     "name": "searchDocument",
-    "body": "query searchDocument($offset: Int, $limit: Int, $cond: String, $sort: [_SortCriterionSpecification!]) { searchDocument(offset: $offset, limit: $limit, cond: $cond, sort: $sort) { elems { id documentId documentType { id name } createdBy createdAt version changeToken pdsContract { id contractDate contractNumber snils status } } count } }",
+    "body": "query searchDocument($offset: Int, $limit: Int, $cond: String, $sort: [_SortCriterionSpecification!]) { searchDocument(offset: $offset, limit: $limit, cond: $cond, sort: $sort) { elems { id documentId documentType { id name } createdBy createdAt version changeToken kidOps { id contractNumber contractDate signingYear lastName firstName middleName snils status } pdsContract { id contractDate contractNumber snils status } } count } }",
     "checkForAnyPrivilege": [
-      "PdsContract:read"
+      "Document:read"
+    ]
+  },
+  {
+    "name": "createKidOps",
+    "body": "mutation createKidOps($document: _CreateDocumentInput!, $input: _CreateKidOpsInput!, $file: _CreateAttachmentInput!, $command: _CreateDocumentCommandInput!) { packet { createDocument(input: $document) { id documentId documentType { id name } } createKidOps(input: $input) { id status } createAttachment(input: $file) { id } createDocumentCommand(input: $command) { id } } }",
+    "checkForAnyPrivilege": [
+      "KidOps:create"
+    ]
+  },
+  {
+    "name": "updateKidOps",
+    "body": "mutation updateKidOps($input: _UpdateKidOpsInput!) { packet { updateKidOps(input: $input) { id status } } }",
+    "checkForAnyPrivilege": [
+      "KidOps:update"
+    ]
+  },
+  {
+    "name": "commitKidOpsAttributes",
+    "body": "mutation commitKidOpsAttributes($details: _UpdateKidOpsInput!, $detailsCompare: _CompareKidOpsInput!, $document: _UpdateDocumentInput!, $compare: _CompareDocumentInput!, $version: _CreateDocumentVersionInput!, $previous: _UpdateDocumentVersionInput!, $command: _CreateDocumentCommandInput!) { packet { updateDocument(input: $document, compare: $compare) { id } updateKidOps(input: $details, compare: $detailsCompare) { id } createDocumentVersion(input: $version) { id } updateDocumentVersion(input: $previous) { id } createDocumentCommand(input: $command) { id } } }",
+    "checkForAnyPrivilege": [
+      "DocumentVersion:commit"
     ]
   }
 ]

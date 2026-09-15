@@ -52,6 +52,9 @@ class CoreliaIntegrationTest {
         app =
                 startService(
                         ru.corelia.gateway.GatewayApplication.class, "corelia-gateway", "gateway");
+        var endpoints = new HashMap<String, Object>();
+        addresses.forEach((name, address) -> endpoints.put("corelia.services." + name, address));
+        for (var context : contexts) context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("test-endpoints", endpoints));
         base = addresses.get("gateway");
     }
 
@@ -175,6 +178,80 @@ class CoreliaIntegrationTest {
                                 "contentBase64",
                                 Base64.getEncoder()
                                         .encodeToString(text.getBytes(StandardCharsets.UTF_8)))));
+    }
+
+    private JsonNode kidBody() {
+        return object("requestId", UUID.randomUUID().toString(), "attributes", object("contractNumber", "ОПС-123-4567-1234567",
+                "contractDate", "2026-09-15", "signingYear", 2026, "lastName", "Иванов", "firstName", "Иван", "snils", "123-456-789 00"),
+                "initialAttachment", object("fileName", "kid.pdf", "contentType", "application/pdf", "contentBase64", "a2lk"));
+    }
+
+    @Test
+    void kidRequiresInitialFileAndValidatesItsOwnAttributesBeforeStartingProcess() throws Exception {
+        var body = copy(kidBody()); body.remove("initialAttachment");
+        ok(call("POST", "/api/core/v1/documents/KID_OPS", body), 400);
+        for (String field : List.of("contractNumber", "contractDate", "signingYear", "lastName", "firstName", "snils")) {
+            body = copy(kidBody()); ((tools.jackson.databind.node.ObjectNode)body.path("attributes")).remove(field);
+            ok(call("POST", "/api/core/v1/documents/KID_OPS", body), 400);
+        }
+        body = copy(kidBody()); ((tools.jackson.databind.node.ObjectNode)body.path("attributes")).put("signingYear", 26);
+        ok(call("POST", "/api/core/v1/documents/KID_OPS", body), 400);
+        body = copy(kidBody()); ((tools.jackson.databind.node.ObjectNode)body.path("attributes")).put("contractDate", "2026-02-30");
+        ok(call("POST", "/api/core/v1/documents/KID_OPS", body), 400);
+        body = copy(kidBody()); ((tools.jackson.databind.node.ObjectNode)body.path("attributes")).put("contractNumber", "PDS-123");
+        ok(call("POST", "/api/core/v1/documents/KID_OPS", body), 400);
+        assertNull(platform.processCreatedId);
+    }
+
+    @Test
+    void kidUploadFailureDoesNotStartProcessOrCreateDocument() throws Exception {
+        platform.failUpload = true;
+        var before = copy(platform.document);
+        int status = call("POST", "/api/core/v1/documents/KID_OPS", kidBody()).statusCode();
+        assertTrue(status >= 500);
+        assertNull(platform.processCreatedId);
+        assertEquals(before, platform.document);
+        assertTrue(platform.attachments.isEmpty());
+    }
+
+    @Test
+    void kidUsesSystemVersioningAndFinishesOnStorageWithHistoryReadable() throws Exception {
+        JsonNode body = kidBody();
+        JsonNode created = ok(call("POST", "/api/core/v1/documents/KID_OPS", body), 201);
+        String id = text(created, "id"), path = "/api/core/v1/documents/KID_OPS/" + id;
+        assertEquals("CREATED", text(created, "status"));
+        assertEquals(1, created.path("attachments").size());
+        assertEquals("", text(created.path("attributes"), "middleName"));
+        assertEquals(id, text(ok(call("POST", "/api/core/v1/documents/KID_OPS", body), 201), "id"));
+        assertEquals(1, platform.calls.stream().filter(c -> c.path().contains("/processes/")).count());
+        JsonNode first = ok(call("GET", path, null), 200);
+        ok(call("POST", "/api/core/v1/tasks/" + id + "/action", object("approvalStatus", "IN_WORK")), 200);
+        JsonNode current = ok(call("GET", path, null), 200);
+        String taskId = text(current.path("workflow").path("task"), "id");
+        JsonNode patch = object("requestId", UUID.randomUUID().toString(), "expectedVersion", 1, "changeToken", text(current, "changeToken"),
+                "attributes", object("lastName", "Петров", "middleName", "Иванович"));
+        JsonNode edited = ok(call("PATCH", path, patch), 200);
+        assertEquals(2, number(edited, "version", 0));
+        assertEquals("Петров", text(edited.path("attributes"), "lastName"));
+        assertEquals("Иванов", text(ok(call("GET", path + "/versions/1", null), 200).path("attributes"), "lastName"));
+        assertEquals(taskId, text(ok(call("GET", path, null), 200).path("workflow").path("task"), "id"));
+        String file = text(first.path("attachments").get(0), "id");
+        ok(call("PUT", "/api/core/v1/attachments/" + file, object("requestId", UUID.randomUUID().toString(), "attachments", List.of(body.path("initialAttachment")))), 200);
+        JsonNode stored = ok(call("POST", "/api/core/v1/tasks/" + id + "/action", object("approvalStatus", "STORED")), 200);
+        assertEquals("STORED", text(stored, "status"));
+        assertEquals(2, number(stored, "version", 0));
+        assertTrue(stored.path("availableActions").isEmpty());
+        JsonNode card = ok(call("GET", path, null), 200);
+        patch = object("requestId", UUID.randomUUID().toString(), "expectedVersion", 2, "changeToken", text(card, "changeToken"), "attributes", object("lastName", "Сидоров"));
+        ok(call("PATCH", path, patch), 409);
+        ok(call("POST", path + "/attachments", object("requestId", UUID.randomUUID().toString(), "attachments", List.of(body.path("initialAttachment")))), 409);
+        String latest = text(card.path("attachments").get(0), "id");
+        ok(call("DELETE", "/api/core/v1/attachments/" + latest, null), 409);
+        ok(call("PUT", "/api/core/v1/attachments/" + latest, object("requestId", UUID.randomUUID().toString(), "attachments", List.of(body.path("initialAttachment")))), 409);
+        assertEquals(200, call("GET", "/api/core/v1/attachments/" + file, null).statusCode());
+        assertEquals(1, ok(call("GET", "/api/core/v1/attachments/" + latest + "/versions", null), 200).size());
+        assertEquals(1, number(ok(call("POST", "/api/core/v1/documents/search", object()), 200), "total", 0));
+        assertEquals(0, number(ok(call("POST", "/api/core/v1/documents/PDS_CONTRACT/search", object()), 200), "total", -1));
     }
 
     @Test
@@ -358,7 +435,7 @@ class CoreliaIntegrationTest {
                 ok(call("POST", "/api/core/v1/documents/PDS_CONTRACT/search", object("offset", 5)), 200)
                         .path("items")
                         .size());
-        assertEquals(1, ok(call("GET", "/api/core/v1/document-types", null), 200).path("total").asInt());
+        assertEquals(2, ok(call("GET", "/api/core/v1/document-types", null), 200).path("total").asInt());
         assertTrue(
                 platform.calls.stream()
                         .filter(call -> call.path().equals("/graphql"))
@@ -769,7 +846,7 @@ class CoreliaIntegrationTest {
     @Test
     void documentContractWorksWithoutExternalConfiguration() throws Exception {
         JsonNode catalog = ok(call("GET", "/api/core/v1/document-types", null), 200);
-        assertEquals(1, number(catalog, "total", 0));
+        assertEquals(2, number(catalog, "total", 0));
         assertEquals("PDS_CONTRACT", text(catalog.path("items").get(0), "code"));
         JsonNode document = ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1", null), 200);
         assertTrue(document.path("attributes").has("contractNumber"));

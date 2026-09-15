@@ -53,6 +53,7 @@ final class PlatformStub implements AutoCloseable {
     volatile int graphqlStatus;
     volatile boolean graphqlErrors;
     volatile boolean processIncident;
+    volatile boolean failUpload;
     volatile boolean noProcess;
     volatile boolean noTask;
     volatile boolean fallbackDetails;
@@ -77,15 +78,16 @@ final class PlatformStub implements AutoCloseable {
         reset();
     }
 
+    private String documentType() { return text(document.path("documentType"), "id"); }
     private void nestDetails(String id) {
         var details = object("id", id);
-        for (String field : List.of("contractDate", "contractNumber", "snils", "status")) {
-            details.set(field, document.path(field)); document.remove(field);
+        for (String field : List.of("contractDate", "contractNumber", "snils", "signingYear", "lastName", "firstName", "middleName", "status")) {
+            if (document.has(field)) details.set(field, document.path(field)); document.remove(field);
         }
         details.set("document", object("id", text(document, "id")));
-        document.set("pdsContract", details);
+        document.set(documentType().equals("KID_OPS") ? "kidOps" : "pdsContract", details);
     }
-    ObjectNode details() { return (ObjectNode) document.path("pdsContract"); }
+    ObjectNode details() { return (ObjectNode) document.path(documentType().equals("KID_OPS") ? "kidOps" : "pdsContract"); }
 
     String base() {
         return "http://127.0.0.1:" + server.getAddress().getPort();
@@ -97,7 +99,7 @@ final class PlatformStub implements AutoCloseable {
         documentVersions.clear(); documentCommands.clear(); failVersionCommit = false; loseVersionResponse = false;
         graphqlStatus = 0;
         graphqlErrors = false;
-        processIncident = false;
+        processIncident = false; failUpload = false;
         noProcess = false;
         noTask = false;
         fallbackDetails = false;
@@ -262,11 +264,21 @@ final class PlatformStub implements AutoCloseable {
                 processCreatedId = text(call.json().path("payload"), "documentId");
                 if (!processIncident) {
                     document = copy(call.json().path("payload"));
-                    document.put("id", "model-new").put("status", "CREATED")
-                            .put("contractNumber", "FROM-PLATFORM");
-                    document.set("documentType", object("id", "PDS_CONTRACT", "name", "Договор ПДС"));
-                    nestDetails("pds-new");
-                    task.set("attributes", object("documentId", object("value", processCreatedId)));
+                    boolean kid = text(document, "documentType").equals("KID_OPS");
+                    document.put("id", "model-new").put("status", "CREATED");
+                    if (!kid) document.put("contractNumber", "FROM-PLATFORM");
+                    document.set("documentType", object("id", kid ? "KID_OPS" : "PDS_CONTRACT", "name", kid ? "КИД ОПС" : "Договор ПДС"));
+                    nestDetails(kid ? "kid-new" : "pds-new");
+                    if (kid) {
+                        JsonNode payload = call.json().path("payload");
+                        var file = object("id", "file-initial", "documentId", processCreatedId, "version", 1, "current", true);
+                        for (String field : List.of("attachmentId", "fileName", "contentType", "size", "storageReference", "uploadedAt")) file.set(field, payload.path("initial_" + field));
+                        file.put("logicalAttachmentId", text(file, "attachmentId"));
+                        attachments.put("file-initial", file);
+                        documentCommands.put(text(payload, "creationKey"), object("commandKey", text(payload, "creationKey"), "requestHash", text(payload, "creationHash"), "response", "{}"));
+                        task.set("completions", object("options", List.of(object("label", "Взять в работу", "result", object("approvalStatus", "IN_WORK")))));
+                    }
+                    task.set("attributes", object("documentId", object("value", processCreatedId), "documentType", documentType()));
                     task.put("status", "NEW").putNull("assignee");
                     noTask = false;
                 }
@@ -317,13 +329,15 @@ final class PlatformStub implements AutoCloseable {
                     details().put(
                             "status",
                             text(call.json().path("parameters"), "approvalStatus"));
-                    noTask = !returnFollowUp;
-                    if (returnFollowUp) {
+                    boolean kidFollowUp = documentType().equals("KID_OPS") && text(details(), "status").equals("IN_WORK");
+                    noTask = !(returnFollowUp || kidFollowUp);
+                    if (returnFollowUp || kidFollowUp) {
                         task =
                                 copy(task)
                                         .put("id", "task-2")
                                         .put("status", "NEW")
                                         .putNull("assignee");
+                        if (kidFollowUp) task.set("completions", object("options", List.of(object("label", "Отправить на хранение", "result", object("approvalStatus", "STORED")))));
                     }
                 }
                 operation(exchange, text(call.json().path("userTaskIds").get(0)));
@@ -333,7 +347,7 @@ final class PlatformStub implements AutoCloseable {
                     json(exchange, 404, object("message", "Не найдено"));
                 else json(exchange, 200, task);
             } else if (path.endsWith("/upload/files/")) {
-                json(exchange, 200, object("uploaded", true));
+                json(exchange, failUpload ? 503 : 200, object("uploaded", !failUpload));
             } else if (path.contains("/download/")) {
                 exchange.getResponseHeaders().add("Content-Type", "text/plain; charset=utf-8");
                 exchange.sendResponseHeaders(200, download.length);
@@ -402,7 +416,7 @@ final class PlatformStub implements AutoCloseable {
         }
         JsonNode variables = body.path("variables");
         JsonNode result;
-        if (name.startsWith("commitDocument") || name.equals("initializeDocumentVersion")) {
+        if ((name.startsWith("commitDocument") || name.equals("commitKidOpsAttributes")) || name.equals("initializeDocumentVersion")) {
             if (query.contains("@include") || query.contains("@skip"))
                 throw new IllegalArgumentException("Conditional packet commands are not supported by this contract");
             var declarations = java.util.regex.Pattern.compile("\\$(\\w+):\\s*(_\\w+Input)!").matcher(query);
@@ -432,7 +446,7 @@ final class PlatformStub implements AutoCloseable {
             documentVersions.put("version-1", version);
             document.put("version", 1).put("changeToken", text(variables, "token"));
             result = object("packet", object("updateDocument", object("id", text(document, "id"))));
-        } else if (Set.of("commitDocumentAttributes", "commitDocumentNoChange", "commitDocumentFileUpload", "commitDocumentFileReplace", "commitDocumentFileDelete").contains(name)) {
+        } else if (Set.of("commitKidOpsAttributes", "commitDocumentAttributes", "commitDocumentNoChange", "commitDocumentFileUpload", "commitDocumentFileReplace", "commitDocumentFileDelete").contains(name)) {
             if (!"true".equals(exchange.getRequestHeaders().getFirst("X-DSPC-multiaggregate")))
                 throw new IllegalStateException("Missing multiaggregate header");
             boolean matches = true;
@@ -494,9 +508,9 @@ final class PlatformStub implements AutoCloseable {
                                                             "documentType",
                                                             object("id", "PDS_CONTRACT"),
                                                             "processId",
-                                                            "Process_test")),
+                                                            "Process_test"), object("id", "settings-kid", "enabled", true, "documentType", object("id", "KID_OPS"), "processId", "Process_kid_ops_storage")),
                                     "count",
-                                    noProcess ? 0 : 1));
+                                    noProcess ? 0 : 2));
         else if (query.startsWith("query refDocumentTypeListGet"))
             result =
                     object(
