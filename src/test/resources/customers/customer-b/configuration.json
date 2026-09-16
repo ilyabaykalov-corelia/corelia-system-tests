@@ -130,6 +130,15 @@
         "aliases": {},
         "tones": {},
         "initialStatus": "OPEN"
+      },
+      "authorization": {
+        "createPermission": "Fixture:create",
+        "editPermission": "Fixture:edit",
+        "executorRole": "fixture_editor",
+        "editableStatuses": [
+          "OPEN"
+        ],
+        "initialUploadStatuses": []
       }
     },
     {
@@ -217,6 +226,15 @@
         "aliases": {},
         "tones": {},
         "initialStatus": "OPEN"
+      },
+      "authorization": {
+        "createPermission": "Fixture:create",
+        "editPermission": "Fixture:edit",
+        "executorRole": "fixture_editor",
+        "editableStatuses": [
+          "OPEN"
+        ],
+        "initialUploadStatuses": []
       }
     },
     {
@@ -303,6 +321,15 @@
         "aliases": {},
         "tones": {},
         "initialStatus": "OPEN"
+      },
+      "authorization": {
+        "createPermission": "Fixture:create",
+        "editPermission": "Fixture:edit",
+        "executorRole": "fixture_editor",
+        "editableStatuses": [
+          "OPEN"
+        ],
+        "initialUploadStatuses": []
       }
     },
     {
@@ -390,6 +417,15 @@
         "aliases": {},
         "tones": {},
         "initialStatus": "OPEN"
+      },
+      "authorization": {
+        "createPermission": "Fixture:create",
+        "editPermission": "Fixture:edit",
+        "executorRole": "fixture_editor",
+        "editableStatuses": [
+          "OPEN"
+        ],
+        "initialUploadStatuses": []
       }
     },
     {
@@ -476,6 +512,15 @@
         "aliases": {},
         "tones": {},
         "initialStatus": "OPEN"
+      },
+      "authorization": {
+        "createPermission": "Fixture:create",
+        "editPermission": "Fixture:edit",
+        "executorRole": "fixture_editor",
+        "editableStatuses": [
+          "OPEN"
+        ],
+        "initialUploadStatuses": []
       }
     }
   ]

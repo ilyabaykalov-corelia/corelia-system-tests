@@ -18,6 +18,42 @@ class ConfigurationContractTest {
     private ConfigurationLoader.LoadedConfiguration load(String customer) {
         return new ConfigurationLoader().load(Path.of("src/test/resources/customers", customer), "0.1.0");
     }
+    @Test void platformPermissionsAndConfiguredAssignmentAreBothRequired() throws Exception {
+        var config = load("customer-a");
+        String source = java.nio.file.Files.readString(Path.of("src/test/resources/customers/customer-a/platform-v-ac.json"));
+        var permissions = PlatformVPermissionChecker.fromText(source, config);
+        var editor = new AuthContext("token", "id", "alice", "Alice", "", List.of("fixture_editor"), "alice");
+        var stranger = new AuthContext("token", "id", "alice", "Alice", "", List.of("document_operator"), "alice");
+        assertDoesNotThrow(() -> permissions.require("Fixture:create", editor));
+        assertEquals(403, assertThrows(ApiException.class, () -> permissions.require("Fixture:create", stranger)).status());
+        assertThrows(ConfigurationException.class, () -> PlatformVPermissionChecker.fromText(source.replace("Fixture:edit", "Fixture:other"), config));
+        assertThrows(ConfigurationException.class, () -> PlatformVPermissionChecker.fromText(source.replace("fixture_editor", "other_role"), config));
+        assertThrows(ConfigurationException.class, () -> PlatformVPermissionChecker.fromText("{invalid", config));
+        var services = mock(ServiceClient.class);
+        when(services.call(eq("workflow"), anyString(), eq("GET"), isNull(), eq(editor)))
+            .thenReturn(object("executor", object("login", "alice", "role", "fixture_editor")));
+        var policy = new ConfiguredDocumentPolicy(services, new DocumentTypes(config), "CONTRACT_X", permissions);
+        var document = object("documentId", "doc", "status", "OPEN");
+        assertDoesNotThrow(() -> policy.authorize(document, "edit", editor));
+        assertEquals(403, assertThrows(ApiException.class, () -> policy.authorize(document, "edit", stranger)).status());
+        when(services.call(eq("workflow"), anyString(), eq("GET"), isNull(), eq(editor)))
+            .thenReturn(object("executor", object("login", "someone_else", "role", "fixture_editor")));
+        assertEquals(403, assertThrows(ApiException.class, () -> policy.authorize(document, "edit", editor)).status());
+        document.put("status", "CLOSED");
+        assertEquals(409, assertThrows(ApiException.class, () -> policy.authorize(document, "edit", editor)).status());
+    }
+    @Test void deniedCreationDoesNotStageFilesOrStartProcesses() throws Exception {
+        var config = load("customer-a");
+        var permissions = PlatformVPermissionChecker.fromText(java.nio.file.Files.readString(Path.of("src/test/resources/customers/customer-a/platform-v-ac.json")), config);
+        var services = mock(ServiceClient.class);
+        var repository = mock(DocumentRepository.class);
+        var versions = mock(DocumentVersionService.class);
+        var versionRepository = mock(DocumentVersionRepository.class);
+        var documentService = new DocumentService(permissions, new DocumentTypes(config), repository, services, versions, versionRepository);
+        var unauthorized = new AuthContext("token", "id", "alice", "Alice", "", List.of(), "alice");
+        assertEquals(403, assertThrows(ApiException.class, () -> documentService.create("CONTRACT_X", object(), unauthorized)).status());
+        verifyNoInteractions(services, repository, versions, versionRepository);
+    }
     @Test void twoCustomersDoNotShareTypesSchemasOrMutableState() {
         var a = new DocumentTypes(load("customer-a"));
         var b = new DocumentTypes(load("customer-b"));
@@ -57,7 +93,7 @@ class ConfigurationContractTest {
                 assertEquals("before", text(variables.getValue().path("compare"), "changeToken"));
                 assertEquals("after", text(variables.getValue().path("document"), "changeToken"));
                 assertFalse(variables.getValue().path("details").has("title"));
-                var policy = new ConfiguredDocumentPolicy(mock(ServiceClient.class), types, type);
+                var policy = new ConfiguredDocumentPolicy(mock(ServiceClient.class), types, type, mock(ru.corelia.auth.PermissionChecker.class));
                 assertEquals(definition.schemaVersion(), policy.schemaVersion());
                 assertThrows(ApiException.class, () -> policy.validateSnapshot(object("title", "missing value")));
                 int maximum = definition.attachments().path("maxCount").asInt();
@@ -97,7 +133,7 @@ class ConfigurationContractTest {
         when(repository.all("CONTRACT_Y", auth)).thenReturn(List.of(
             object("id", "a", "attributes", object("title", "alpha", "value", 2)),
             object("id", "b", "attributes", object("title", "beta", "value", 10))));
-        var service = new DocumentService(types, repository, mock(ServiceClient.class), mock(DocumentVersionService.class), mock(DocumentVersionRepository.class));
+        var service = new DocumentService(mock(ru.corelia.auth.PermissionChecker.class), types, repository, mock(ServiceClient.class), mock(DocumentVersionService.class), mock(DocumentVersionRepository.class));
         assertEquals("b", text(service.search("CONTRACT_Y", object(), auth).path("items").get(0), "id"));
         assertEquals(0, number(service.search("CONTRACT_Y", object("query", "10"), auth), "total", -1));
         assertEquals(1, number(service.search("CONTRACT_Y", object("query", "alpha"), auth), "total", -1));

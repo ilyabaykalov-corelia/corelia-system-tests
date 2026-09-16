@@ -38,7 +38,7 @@ class DockerSmokeTest {
                             "attachment-service")) {
                 yaml.append("  corelia-")
                         .append(service)
-                        .append(":\n    environment:\n")
+                        .append(":\n    volumes:\n      - ").append(root.resolve("../sber-npf-platform-v/ac.json").normalize()).append(":/etc/corelia/platform-v-ac.json:ro\n    environment:\n      CORELIA_PLATFORM_V_AC_PATH: /etc/corelia/platform-v-ac.json\n")
                         .append("      PLATFORM_V_KEYCLOAK_BASE_URL: ")
                         .append(dockerBase)
                         .append("/realm\n")
