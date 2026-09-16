@@ -54,6 +54,11 @@ class ConfigurationContractTest {
         assertEquals(403, assertThrows(ApiException.class, () -> documentService.create("CONTRACT_X", object(), unauthorized)).status());
         verifyNoInteractions(services, repository, versions, versionRepository);
     }
+    @Test void sberSchemaAcceptsValidDateAndInsuranceNumber() {
+        var types = new DocumentTypes(new ConfigurationLoader().load(Path.of("../../sber-npf-corelia-config"), "0.1.0"));
+        assertDoesNotThrow(() -> types.validate("PDS_CONTRACT", object("contractDate", "2026-09-16", "contractNumber", "ПДС-1", "snils", "123-456-789 00"), false));
+        assertThrows(ApiException.class, () -> types.validate("PDS_CONTRACT", object("contractDate", "2026-02-30", "contractNumber", "ПДС-1", "snils", "123-456-789 00"), false));
+    }
     @Test void twoCustomersDoNotShareTypesSchemasOrMutableState() {
         var a = new DocumentTypes(load("customer-a"));
         var b = new DocumentTypes(load("customer-b"));
