@@ -167,6 +167,7 @@ class DockerSmokeTest {
         command.addAll(List.of(arguments));
         var builder =
                 new ProcessBuilder(command).directory(root.toFile()).redirectErrorStream(true);
+        builder.environment().put("CORELIA_CUSTOMER_CONFIG", root.resolve("../sber-npf-corelia-config").normalize().toString());
         for (String field : List.of("u", "g")) {
             var id = new ProcessBuilder("id", "-" + field).start();
             String value = new String(id.getInputStream().readAllBytes()).trim();

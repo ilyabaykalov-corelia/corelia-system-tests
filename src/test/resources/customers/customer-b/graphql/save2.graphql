@@ -1,0 +1,1 @@
+mutation save2($details: _UpdateFixture2Input!) { packet { updateFixture2(input: $details) { id } } }

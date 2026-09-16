@@ -1,0 +1,1 @@
+query read1 { searchDocument { elems { id documentId documentType { id } details1 { id status caption measure } } count } }

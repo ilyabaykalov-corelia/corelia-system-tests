@@ -1,0 +1,482 @@
+{
+  "schemaVersion": 1,
+  "compatibility": {
+    "corelia": ">=0.1.0 <1.0.0"
+  },
+  "operations": {
+    "read0": {
+      "file": "graphql/read0.graphql",
+      "multiaggregate": false
+    },
+    "save0": {
+      "file": "graphql/save0.graphql",
+      "multiaggregate": true
+    },
+    "read1": {
+      "file": "graphql/read1.graphql",
+      "multiaggregate": false
+    },
+    "save1": {
+      "file": "graphql/save1.graphql",
+      "multiaggregate": true
+    },
+    "read2": {
+      "file": "graphql/read2.graphql",
+      "multiaggregate": false
+    },
+    "save2": {
+      "file": "graphql/save2.graphql",
+      "multiaggregate": true
+    },
+    "read3": {
+      "file": "graphql/read3.graphql",
+      "multiaggregate": false
+    },
+    "save3": {
+      "file": "graphql/save3.graphql",
+      "multiaggregate": true
+    },
+    "read4": {
+      "file": "graphql/read4.graphql",
+      "multiaggregate": false
+    },
+    "save4": {
+      "file": "graphql/save4.graphql",
+      "multiaggregate": true
+    }
+  },
+  "documentTypes": [
+    {
+      "id": "CONTRACT_G",
+      "title": "customer-b / CONTRACT_G",
+      "schemaVersion": 1,
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "value"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ui": {
+        "columns": [
+          "title",
+          "value"
+        ],
+        "fields": [
+          "title",
+          "value"
+        ],
+        "searchFields": [
+          "title"
+        ],
+        "sortFields": [
+          "title"
+        ]
+      },
+      "storage": {
+        "provider": "platform-v",
+        "entity": "Fixture0",
+        "details": "details0",
+        "fields": {
+          "title": "caption",
+          "value": "checked"
+        },
+        "operations": {
+          "search": "read0",
+          "update": "save0"
+        }
+      },
+      "workflow": {
+        "processes": {
+          "create": "process0"
+        },
+        "actions": {
+          "CREATE": "create"
+        },
+        "creationSource": "configuration",
+        "creationAction": "CREATE",
+        "externalFields": [
+          "title"
+        ],
+        "completion": {
+          "statusField": "decision",
+          "assigneeField": "owner",
+          "assignmentStatuses": [
+            "OPEN"
+          ],
+          "assignmentCodes": [],
+          "autoStart": false
+        }
+      },
+      "attachments": {
+        "enabled": true,
+        "initialRequired": false,
+        "maxCount": 1
+      },
+      "presentation": {
+        "statuses": {
+          "OPEN": "Открыт"
+        },
+        "aliases": {},
+        "tones": {},
+        "initialStatus": "OPEN"
+      }
+    },
+    {
+      "id": "CONTRACT_L",
+      "title": "customer-b / CONTRACT_L",
+      "schemaVersion": 2,
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "value"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": "number",
+            "minimum": 0
+          }
+        }
+      },
+      "ui": {
+        "columns": [
+          "title",
+          "value"
+        ],
+        "fields": [
+          "title",
+          "value"
+        ],
+        "searchFields": [
+          "title"
+        ],
+        "sortFields": [
+          "title"
+        ]
+      },
+      "storage": {
+        "provider": "platform-v",
+        "entity": "Fixture1",
+        "details": "details1",
+        "fields": {
+          "title": "caption",
+          "value": "measure"
+        },
+        "operations": {
+          "search": "read1",
+          "update": "save1"
+        }
+      },
+      "workflow": {
+        "processes": {
+          "create": "process1"
+        },
+        "actions": {
+          "CREATE": "create"
+        },
+        "creationSource": "configuration",
+        "creationAction": "CREATE",
+        "externalFields": [
+          "title"
+        ],
+        "completion": {
+          "statusField": "decision",
+          "assigneeField": "owner",
+          "assignmentStatuses": [
+            "OPEN"
+          ],
+          "assignmentCodes": [],
+          "autoStart": false
+        }
+      },
+      "attachments": {
+        "enabled": true,
+        "initialRequired": false,
+        "maxCount": 2
+      },
+      "presentation": {
+        "statuses": {
+          "OPEN": "Открыт"
+        },
+        "aliases": {},
+        "tones": {},
+        "initialStatus": "OPEN"
+      }
+    },
+    {
+      "id": "CONTRACT_V",
+      "title": "customer-b / CONTRACT_V",
+      "schemaVersion": 3,
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "value"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ui": {
+        "columns": [
+          "title",
+          "value"
+        ],
+        "fields": [
+          "title",
+          "value"
+        ],
+        "searchFields": [
+          "title"
+        ],
+        "sortFields": [
+          "title"
+        ]
+      },
+      "storage": {
+        "provider": "platform-v",
+        "entity": "Fixture2",
+        "details": "details2",
+        "fields": {
+          "title": "caption",
+          "value": "checked"
+        },
+        "operations": {
+          "search": "read2",
+          "update": "save2"
+        }
+      },
+      "workflow": {
+        "processes": {
+          "create": "process2"
+        },
+        "actions": {
+          "CREATE": "create"
+        },
+        "creationSource": "configuration",
+        "creationAction": "CREATE",
+        "externalFields": [
+          "title"
+        ],
+        "completion": {
+          "statusField": "decision",
+          "assigneeField": "owner",
+          "assignmentStatuses": [
+            "OPEN"
+          ],
+          "assignmentCodes": [],
+          "autoStart": false
+        }
+      },
+      "attachments": {
+        "enabled": true,
+        "initialRequired": false,
+        "maxCount": 3
+      },
+      "presentation": {
+        "statuses": {
+          "OPEN": "Открыт"
+        },
+        "aliases": {},
+        "tones": {},
+        "initialStatus": "OPEN"
+      }
+    },
+    {
+      "id": "CONTRACT_X",
+      "title": "customer-b / CONTRACT_X",
+      "schemaVersion": 4,
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "value"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": "number",
+            "minimum": 0
+          }
+        }
+      },
+      "ui": {
+        "columns": [
+          "title",
+          "value"
+        ],
+        "fields": [
+          "title",
+          "value"
+        ],
+        "searchFields": [
+          "title"
+        ],
+        "sortFields": [
+          "title"
+        ]
+      },
+      "storage": {
+        "provider": "platform-v",
+        "entity": "Fixture3",
+        "details": "details3",
+        "fields": {
+          "title": "caption",
+          "value": "measure"
+        },
+        "operations": {
+          "search": "read3",
+          "update": "save3"
+        }
+      },
+      "workflow": {
+        "processes": {
+          "create": "process3"
+        },
+        "actions": {
+          "CREATE": "create"
+        },
+        "creationSource": "configuration",
+        "creationAction": "CREATE",
+        "externalFields": [
+          "title"
+        ],
+        "completion": {
+          "statusField": "decision",
+          "assigneeField": "owner",
+          "assignmentStatuses": [
+            "OPEN"
+          ],
+          "assignmentCodes": [],
+          "autoStart": false
+        }
+      },
+      "attachments": {
+        "enabled": true,
+        "initialRequired": false,
+        "maxCount": 4
+      },
+      "presentation": {
+        "statuses": {
+          "OPEN": "Открыт"
+        },
+        "aliases": {},
+        "tones": {},
+        "initialStatus": "OPEN"
+      }
+    },
+    {
+      "id": "CONTRACT_Y",
+      "title": "customer-b / CONTRACT_Y",
+      "schemaVersion": 5,
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "value"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ui": {
+        "columns": [
+          "title",
+          "value"
+        ],
+        "fields": [
+          "title",
+          "value"
+        ],
+        "searchFields": [
+          "title"
+        ],
+        "sortFields": [
+          "title"
+        ]
+      },
+      "storage": {
+        "provider": "platform-v",
+        "entity": "Fixture4",
+        "details": "details4",
+        "fields": {
+          "title": "caption",
+          "value": "checked"
+        },
+        "operations": {
+          "search": "read4",
+          "update": "save4"
+        }
+      },
+      "workflow": {
+        "processes": {
+          "create": "process4"
+        },
+        "actions": {
+          "CREATE": "create"
+        },
+        "creationSource": "configuration",
+        "creationAction": "CREATE",
+        "externalFields": [
+          "title"
+        ],
+        "completion": {
+          "statusField": "decision",
+          "assigneeField": "owner",
+          "assignmentStatuses": [
+            "OPEN"
+          ],
+          "assignmentCodes": [],
+          "autoStart": false
+        }
+      },
+      "attachments": {
+        "enabled": true,
+        "initialRequired": false,
+        "maxCount": 5
+      },
+      "presentation": {
+        "statuses": {
+          "OPEN": "Открыт"
+        },
+        "aliases": {},
+        "tones": {},
+        "initialStatus": "OPEN"
+      }
+    }
+  ]
+}

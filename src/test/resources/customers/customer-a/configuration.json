@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 1,
+  "compatibility": {
+    "corelia": ">=0.1.0 <1.0.0"
+  },
+  "operations": {
+    "read0": {
+      "file": "graphql/read0.graphql",
+      "multiaggregate": false
+    },
+    "save0": {
+      "file": "graphql/save0.graphql",
+      "multiaggregate": true
+    },
+    "read1": {
+      "file": "graphql/read1.graphql",
+      "multiaggregate": false
+    },
+    "save1": {
+      "file": "graphql/save1.graphql",
+      "multiaggregate": true
+    }
+  },
+  "documentTypes": [
+    {
+      "id": "CONTRACT_X",
+      "title": "customer-a / CONTRACT_X",
+      "schemaVersion": 1,
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "value"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ui": {
+        "columns": [
+          "title",
+          "value"
+        ],
+        "fields": [
+          "title",
+          "value"
+        ],
+        "searchFields": [
+          "title"
+        ],
+        "sortFields": [
+          "title"
+        ]
+      },
+      "storage": {
+        "provider": "platform-v",
+        "entity": "Fixture0",
+        "details": "details0",
+        "fields": {
+          "title": "caption",
+          "value": "checked"
+        },
+        "operations": {
+          "search": "read0",
+          "update": "save0"
+        }
+      },
+      "workflow": {
+        "processes": {
+          "create": "process0"
+        },
+        "actions": {
+          "CREATE": "create"
+        },
+        "creationSource": "configuration",
+        "creationAction": "CREATE",
+        "externalFields": [
+          "title"
+        ],
+        "completion": {
+          "statusField": "decision",
+          "assigneeField": "owner",
+          "assignmentStatuses": [
+            "OPEN"
+          ],
+          "assignmentCodes": [],
+          "autoStart": false
+        }
+      },
+      "attachments": {
+        "enabled": true,
+        "initialRequired": false,
+        "maxCount": 1
+      },
+      "presentation": {
+        "statuses": {
+          "OPEN": "Открыт"
+        },
+        "aliases": {},
+        "tones": {},
+        "initialStatus": "OPEN"
+      }
+    },
+    {
+      "id": "CONTRACT_Y",
+      "title": "customer-a / CONTRACT_Y",
+      "schemaVersion": 2,
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "value"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "value": {
+            "type": "number",
+            "minimum": 0
+          }
+        }
+      },
+      "ui": {
+        "columns": [
+          "title",
+          "value"
+        ],
+        "fields": [
+          "title",
+          "value"
+        ],
+        "searchFields": [
+          "title"
+        ],
+        "sortFields": [
+          "title"
+        ]
+      },
+      "storage": {
+        "provider": "platform-v",
+        "entity": "Fixture1",
+        "details": "details1",
+        "fields": {
+          "title": "caption",
+          "value": "measure"
+        },
+        "operations": {
+          "search": "read1",
+          "update": "save1"
+        }
+      },
+      "workflow": {
+        "processes": {
+          "create": "process1"
+        },
+        "actions": {
+          "CREATE": "create"
+        },
+        "creationSource": "configuration",
+        "creationAction": "CREATE",
+        "externalFields": [
+          "title"
+        ],
+        "completion": {
+          "statusField": "decision",
+          "assigneeField": "owner",
+          "assignmentStatuses": [
+            "OPEN"
+          ],
+          "assignmentCodes": [],
+          "autoStart": false
+        }
+      },
+      "attachments": {
+        "enabled": true,
+        "initialRequired": false,
+        "maxCount": 2
+      },
+      "presentation": {
+        "statuses": {
+          "OPEN": "Открыт"
+        },
+        "aliases": {},
+        "tones": {},
+        "initialStatus": "OPEN"
+      }
+    }
+  ]
+}
