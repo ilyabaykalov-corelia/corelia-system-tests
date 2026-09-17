@@ -1,0 +1,1 @@
+query read2 { searchDocument { elems { id documentId documentType { id } details2 { id status caption checked } } count } }

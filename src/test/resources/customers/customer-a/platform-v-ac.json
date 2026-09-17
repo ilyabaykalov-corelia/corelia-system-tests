@@ -1,0 +1,22 @@
+{
+  "roles": [
+    {
+      "name": "fixture_editor",
+      "label": "Редактор"
+    }
+  ],
+  "scopes": [
+    {
+      "name": "Fixture:create",
+      "roles": [
+        "fixture_editor"
+      ]
+    },
+    {
+      "name": "Fixture:edit",
+      "roles": [
+        "fixture_editor"
+      ]
+    }
+  ]
+}

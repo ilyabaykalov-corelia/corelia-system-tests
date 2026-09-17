@@ -68,6 +68,8 @@ class CoreliaIntegrationTest {
                 new ArrayList<>(
                         List.of(
                                 "--spring.config.name=corelia-test",
+                                "--CORELIA_CONFIG_PATH=" + root.resolve("../sber-npf-corelia-config").normalize(),
+                                "--CORELIA_PLATFORM_V_AC_PATH=" + root.resolve("../sber-npf-platform-v/ac.json").normalize(),
                                 "--server.port=0",
                                 "--spring.main.banner-mode=off",
                                 "--spring.threads.virtual.enabled=true",
@@ -844,7 +846,7 @@ class CoreliaIntegrationTest {
     }
 
     @Test
-    void documentContractWorksWithoutExternalConfiguration() throws Exception {
+    void documentContractUsesExternalCustomerConfiguration() throws Exception {
         JsonNode catalog = ok(call("GET", "/api/core/v1/document-types", null), 200);
         assertEquals(2, number(catalog, "total", 0));
         assertEquals("PDS_CONTRACT", text(catalog.path("items").get(0), "code"));
@@ -1146,4 +1148,34 @@ class CoreliaIntegrationTest {
                 text(parse(response.body()).path("errors").get(0), "message")
                         .contains("body does not match"));
     }
+    @Test
+    void capabilitiesFollowCurrentPolicyAndDenyForeignOrClosedEdits() throws Exception {
+        String path = "/api/core/v1/documents/PDS_CONTRACT/doc-1/capabilities";
+        JsonNode editable = ok(call("GET", path, null), 200);
+        assertTrue(list(editable.path("capabilities")).stream().anyMatch(v -> text(v).equals("EDIT")));
+        assertTrue(list(editable.path("capabilities")).stream().anyMatch(v -> text(v).equals("ADD_ATTACHMENT")));
+        assertFalse(list(editable.path("capabilities")).stream().anyMatch(v -> text(v).equals("DELETE_ATTACHMENT")));
+        platform.task.put("assignee", "another-user");
+        assertTrue(ok(call("GET", path, null), 200).path("capabilities").isEmpty());
+        platform.details().put("status", "CREATED");
+        JsonNode initial = ok(call("GET", path, null), 200);
+        assertEquals(List.of("ADD_ATTACHMENT"), list(initial.path("capabilities")).stream().map(v -> text(v)).toList());
+        platform.details().put("status", "APPROVED");
+        assertTrue(ok(call("GET", path, null), 200).path("capabilities").isEmpty());
+        JsonNode metadata = ok(call("GET", "/api/core/v1/document-types/PDS_CONTRACT", null), 200);
+        assertTrue(metadata.path("schema").isObject());
+        assertFalse(metadata.has("storage"));
+    }
+
+    @Test
+    void documentActionRoutesUseOnlyCurrentWorkflowOptions() throws Exception {
+        String path = "/api/core/v1/documents/PDS_CONTRACT/doc-1/actions";
+        JsonNode actions = ok(call("GET", path, null), 200);
+        assertFalse(actions.path("actions").isEmpty());
+        ok(call("POST", path + "/NOT_AVAILABLE", object()), 400);
+        JsonNode updated = ok(call("POST", path + "/APPROVED", object()), 200);
+        assertEquals("APPROVED", text(updated, "status"));
+        assertTrue(ok(call("GET", path, null), 200).path("actions").isEmpty());
+    }
+
 }
