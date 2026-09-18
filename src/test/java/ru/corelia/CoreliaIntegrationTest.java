@@ -264,8 +264,7 @@ class CoreliaIntegrationTest {
         ok(raw("GET", "/api/core/v1/health", null, null), 200);
         var preflight = raw("OPTIONS", "/api/core/v1/documents/PDS_CONTRACT", null, null);
         assertEquals(204, preflight.statusCode());
-        assertEquals(
-                "*", preflight.headers().firstValue("Access-Control-Allow-Origin").orElseThrow());
+        assertTrue(preflight.headers().firstValue("Access-Control-Allow-Origin").isEmpty());
     }
 
     @Test
