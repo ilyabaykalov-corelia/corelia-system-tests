@@ -178,6 +178,8 @@ final class PlatformStub implements AutoCloseable {
                 login + "@test.local",
                 "exp",
                 Instant.now().getEpochSecond() + 600,
+                "aud",
+                List.of("PlatformAuth-Proxy"),
                 "realm_access",
                 object("roles", List.of("document_operator")),
                 "resource_access",

@@ -336,6 +336,13 @@ class CoreliaIntegrationTest {
     }
 
     @Test
+    void rejectsTokenForAnotherAudience() throws Exception {
+        var wrong = platform.claims("operator");
+        wrong.putArray("aud").add("another-client");
+        ok(raw("GET", "/api/core/v1/auth/me", null, platform.token(wrong, platform.kid, "RS256")), 401);
+    }
+
+    @Test
     void refreshesJwksWhenKeyRotates() throws Exception {
         ok(call("GET", "/api/core/v1/auth/me", null), 200);
         platform.kid = "rotated-" + UUID.randomUUID();
