@@ -152,6 +152,34 @@ class CoreliaIntegrationTest {
         return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
     }
 
+    private HttpResponse<String> multipart(String method, String path, String name, String content)
+            throws Exception {
+        String boundary = "CoreliaTest" + UUID.randomUUID().toString().replace("-", "");
+        String requestId = UUID.randomUUID().toString();
+        String body =
+                "--"
+                        + boundary
+                        + "\r\nContent-Disposition: form-data; name=\"requestId\"\r\n\r\n"
+                        + requestId
+                        + "\r\n--"
+                        + boundary
+                        + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\""
+                        + name
+                        + "\"\r\nContent-Type: text/plain\r\n\r\n"
+                        + content
+                        + "\r\n--"
+                        + boundary
+                        + "--\r\n";
+        return http.send(
+                HttpRequest.newBuilder(URI.create(base + path))
+                        .timeout(Duration.ofSeconds(15))
+                        .header("Authorization", "Bearer " + token)
+                        .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                        .method(method, HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+    }
+
     private JsonNode ok(HttpResponse<String> response, int status) {
         assertEquals(status, response.statusCode(), response.body());
         return response.body().isEmpty() ? object() : parse(response.body());
@@ -616,6 +644,36 @@ class CoreliaIntegrationTest {
                         .path("deleted")
                         .asBoolean());
         assertTrue(platform.attachments.values().stream().noneMatch(item -> item.path("current").asBoolean()));
+    }
+
+    @Test
+    void streamsMultipartAttachmentUploadAndReplacement() throws Exception {
+        JsonNode uploaded =
+                ok(
+                        multipart(
+                                "POST",
+                                "/api/core/v1/documents/PDS_CONTRACT/doc-1/attachments/stream",
+                                "поток.txt",
+                                "первый поток"),
+                        201);
+        assertEquals("поток.txt", text(uploaded, "fileName"));
+        assertEquals("первый поток".getBytes(StandardCharsets.UTF_8).length, number(uploaded, "size", 0));
+        JsonNode replaced =
+                ok(
+                        multipart(
+                                "PUT",
+                                "/api/core/v1/attachments/"
+                                        + encode(text(uploaded, "id"))
+                                        + "/stream",
+                                "поток.txt",
+                                "второй поток"),
+                        200);
+        assertEquals(2, number(replaced, "version", 0));
+        assertEquals(text(uploaded, "id"), text(replaced, "logicalAttachmentId"));
+        assertTrue(
+                platform.calls.stream()
+                        .filter(call -> call.path().endsWith("/upload/files/"))
+                        .anyMatch(call -> call.body().contains("второй поток")));
     }
 
     @Test
