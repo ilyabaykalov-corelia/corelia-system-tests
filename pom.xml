@@ -10,11 +10,6 @@
     <dependencies>
         <dependency>
             <groupId>ru.corelia</groupId>
-            <artifactId>corelia-auth</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>ru.corelia</groupId>
             <artifactId>corelia-document-service</artifactId>
             <version>${project.version}</version>
         </dependency>

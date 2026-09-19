@@ -48,7 +48,6 @@ class CoreliaIntegrationTest {
                 ru.corelia.attachments.AttachmentApplication.class,
                 "corelia-attachment-service",
                 "attachment");
-        startService(ru.corelia.identity.AuthApplication.class, "corelia-auth", "auth");
         app =
                 startService(
                         ru.corelia.gateway.GatewayApplication.class, "corelia-gateway", "gateway");
@@ -347,8 +346,8 @@ class CoreliaIntegrationTest {
         platform.kid = "rotated-" + UUID.randomUUID();
         int before = platform.jwksCalls.get();
         ok(raw("GET", "/api/core/v1/auth/me", null, platform.token("operator")), 200);
-        // После ротации каждый из двух сервисов независимо обновляет ключи.
-        assertEquals(before + 2, platform.jwksCalls.get());
+        // После ротации gateway обновляет ключи для проверки нового JWT.
+        assertEquals(before + 1, platform.jwksCalls.get());
         ok(
                 raw(
                         "GET",
@@ -1002,7 +1001,7 @@ class CoreliaIntegrationTest {
                 assertThrows(
                                 ru.corelia.http.ApiException.class,
                                 () ->
-                                        peer("corelia-auth")
+                                        peer("corelia-workflow-service")
                                                 .call(
                                                         "document",
                                                         "/internal/v1/document-types",
