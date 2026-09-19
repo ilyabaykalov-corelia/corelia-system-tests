@@ -179,7 +179,7 @@ final class PlatformStub implements AutoCloseable {
                 "exp",
                 Instant.now().getEpochSecond() + 600,
                 "aud",
-                List.of("PlatformAuth-Proxy"),
+                List.of("corelia-web"),
                 "realm_access",
                 object("roles", List.of("document_operator")),
                 "resource_access",

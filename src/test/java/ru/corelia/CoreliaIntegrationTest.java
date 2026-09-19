@@ -359,56 +359,16 @@ class CoreliaIntegrationTest {
     }
 
     @Test
-    void loginRefreshLogoutPreserveSessionContract() throws Exception {
-        long now = System.currentTimeMillis();
-        JsonNode session =
-                ok(
-                        raw(
-                                "POST",
-                                "/api/core/v1/auth/login",
-                                write(object("username", " оператор ", "password", "пароль &+")),
-                                null),
-                        200);
-        assertEquals("refresh-test", text(session, "refreshToken"));
-        assertTrue(number(session, "expiresAt", 0) >= now + 300000);
-        var form =
-                platform.calls.stream()
-                        .filter(call -> call.path().endsWith("/token"))
-                        .findFirst()
-                        .orElseThrow();
-        assertTrue(form.body().contains("grant_type=password"));
-        assertTrue(form.body().contains("client_id=PlatformAuth-Proxy"));
-        assertNull(form.authorization());
-        ok(
-                raw(
-                        "POST",
-                        "/api/core/v1/auth/refresh",
-                        write(object("refreshToken", "refresh-test")),
-                        null),
-                200);
-        ok(
-                raw(
-                        "POST",
-                        "/api/core/v1/auth/logout",
-                        write(object("refreshToken", "refresh-test")),
-                        null),
-                204);
-        ok(raw("POST", "/api/core/v1/auth/logout", "{}", null), 204);
-    }
-
-    @Test
     void validatesJsonAndBodyLimit() throws Exception {
-        ok(raw("POST", "/api/core/v1/auth/login", "{bad", null), 400);
-        ok(raw("POST", "/api/core/v1/auth/login", "{}", null), 400);
-        ok(raw("POST", "/api/core/v1/auth/refresh", "{}", null), 400);
+        ok(raw("POST", "/api/core/v1/documents/search", "{bad", token), 400);
         ok(
                 raw(
                         "POST",
-                        "/api/core/v1/auth/login",
+                        "/api/core/v1/documents/search",
                         "{\"username\":\"" + "x".repeat(1024 * 1024) + "\"}",
-                        null),
+                        token),
                 413);
-        ok(raw("POST", "/api/core/v1/auth/login", "null", null), 400);
+        ok(raw("POST", "/api/core/v1/documents/search", "null", token), 400);
     }
 
     @Test
@@ -792,11 +752,12 @@ class CoreliaIntegrationTest {
                 ("{\"username\":\"" + "x".repeat(1024 * 1024) + "\"}")
                         .getBytes(StandardCharsets.UTF_8);
         var request =
-                HttpRequest.newBuilder(URI.create(base + "/api/core/v1/auth/login"))
+                HttpRequest.newBuilder(URI.create(base + "/api/core/v1/documents/search"))
                         .POST(
                                 HttpRequest.BodyPublishers.ofInputStream(
                                         () -> new java.io.ByteArrayInputStream(bytes)))
                         .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer " + token)
                         .build();
         assertEquals(413, http.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
     }
