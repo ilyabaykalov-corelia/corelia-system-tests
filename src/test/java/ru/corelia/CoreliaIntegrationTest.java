@@ -180,6 +180,22 @@ class CoreliaIntegrationTest {
                 HttpResponse.BodyHandlers.ofString());
     }
 
+    private HttpResponse<String> multipartCreate(String type, JsonNode attributes, String name, String content)
+            throws Exception {
+        String boundary = "CoreliaCreate" + UUID.randomUUID().toString().replace("-", "");
+        String body = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"requestId\"\r\n\r\n"
+                + UUID.randomUUID() + "\r\n--" + boundary
+                + "\r\nContent-Disposition: form-data; name=\"attributes\"\r\n\r\n" + write(attributes)
+                + "\r\n--" + boundary
+                + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + name
+                + "\"\r\nContent-Type: application/pdf\r\n\r\n" + content
+                + "\r\n--" + boundary + "--\r\n";
+        return http.send(HttpRequest.newBuilder(URI.create(base + "/api/core/v1/documents/" + type + "/stream"))
+                .timeout(Duration.ofSeconds(15)).header("Authorization", "Bearer " + token)
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
     private JsonNode ok(HttpResponse<String> response, int status) {
         assertEquals(status, response.statusCode(), response.body());
         return response.body().isEmpty() ? object() : parse(response.body());
@@ -674,6 +690,14 @@ class CoreliaIntegrationTest {
                 platform.calls.stream()
                         .filter(call -> call.path().endsWith("/upload/files/"))
                         .anyMatch(call -> call.body().contains("второй поток")));
+    }
+
+    @Test
+    void createsRequiredAttachmentThroughGenericMultipartRoute() throws Exception {
+        JsonNode created = ok(multipartCreate("KID_OPS", kidBody().path("attributes"), "kid.pdf", "содержимое КИД"), 201);
+        assertEquals("KID_OPS", text(created, "typeCode"));
+        assertEquals(1, created.path("attachments").size());
+        assertEquals("kid.pdf", text(created.path("attachments").get(0), "fileName"));
     }
 
     @Test
