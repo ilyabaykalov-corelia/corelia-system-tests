@@ -1,0 +1,70 @@
+{
+  "attachments": {
+    "enabled": true,
+    "initialRequired": false,
+    "maxCount": 5
+  },
+  "id": "CONTRACT_Y",
+  "presentation": {
+    "aliases": {},
+    "initialStatus": "OPEN",
+    "statuses": {
+      "OPEN": "Открыт"
+    },
+    "tones": {}
+  },
+  "schema": {
+    "additionalProperties": false,
+    "properties": {
+      "title": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "value": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "title",
+      "value"
+    ],
+    "type": "object"
+  },
+  "schemaVersion": 5,
+  "storage": {
+    "details": "details4",
+    "entity": "Fixture4",
+    "fields": {
+      "title": "caption",
+      "value": "checked"
+    },
+    "operations": {
+      "search": "read4",
+      "update": "save4"
+    },
+    "provider": "platform-v"
+  },
+  "title": "customer-b / CONTRACT_Y",
+  "workflow": {
+    "actions": {
+      "CREATE": "create"
+    },
+    "completion": {
+      "assigneeField": "owner",
+      "assignmentCodes": [],
+      "assignmentStatuses": [
+        "OPEN"
+      ],
+      "autoStart": false,
+      "statusField": "decision"
+    },
+    "creationAction": "CREATE",
+    "creationSource": "configuration",
+    "externalFields": [
+      "title"
+    ],
+    "processes": {
+      "create": "process4"
+    }
+  }
+}

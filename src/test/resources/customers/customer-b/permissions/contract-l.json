@@ -1,0 +1,12 @@
+{
+  "authorization": {
+    "createPermission": "Fixture:create",
+    "editPermission": "Fixture:edit",
+    "editableStatuses": [
+      "OPEN"
+    ],
+    "executorRole": "fixture_editor",
+    "initialUploadStatuses": []
+  },
+  "id": "CONTRACT_L"
+}

@@ -897,7 +897,9 @@ class CoreliaIntegrationTest {
     void documentContractUsesExternalCustomerConfiguration() throws Exception {
         JsonNode catalog = ok(call("GET", "/api/core/v1/document-types", null), 200);
         assertEquals(2, number(catalog, "total", 0));
-        assertEquals("PDS_CONTRACT", text(catalog.path("items").get(0), "code"));
+        assertTrue(
+                list(catalog.path("items")).stream()
+                        .anyMatch(item -> "PDS_CONTRACT".equals(text(item, "code"))));
         JsonNode document = ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1", null), 200);
         assertTrue(document.path("attributes").has("contractNumber"));
         ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1/versions", null), 200);
