@@ -25,6 +25,7 @@ class CoreliaIntegrationTest {
     private WebServerApplicationContext app;
     private final HttpClient http = HttpClient.newHttpClient();
     private String base;
+    private String managementBase;
     private String token;
 
     private final List<org.springframework.context.ConfigurableApplicationContext> contexts =
@@ -55,6 +56,9 @@ class CoreliaIntegrationTest {
         addresses.forEach((name, address) -> endpoints.put("corelia.services." + name, address));
         for (var context : contexts) context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("test-endpoints", endpoints));
         base = addresses.get("gateway");
+        managementBase =
+                "http://localhost:"
+                        + app.getEnvironment().getRequiredProperty("local.management.port");
     }
 
     private WebServerApplicationContext startService(
@@ -70,6 +74,9 @@ class CoreliaIntegrationTest {
                                 "--CORELIA_CONFIG_PATH=" + root.resolve("../sber-npf-corelia-config").normalize(),
                                 "--CORELIA_PLATFORM_V_AC_PATH=" + root.resolve("../sber-npf-platform-v/ac.json").normalize(),
                                 "--server.port=0",
+                                "--management.server.port=0",
+                                "--management.endpoints.web.exposure.include=health,prometheus",
+                                "--management.endpoint.prometheus.access=unrestricted",
                                 "--spring.main.banner-mode=off",
                                 "--spring.threads.virtual.enabled=true",
                                 "--corelia.service=" + service,
@@ -308,6 +315,24 @@ class CoreliaIntegrationTest {
         var preflight = raw("OPTIONS", "/api/core/v1/documents/PDS_CONTRACT", null, null);
         assertEquals(204, preflight.statusCode());
         assertTrue(preflight.headers().firstValue("Access-Control-Allow-Origin").isEmpty());
+    }
+
+    @Test
+    void managementEndpointsExposeOnlyLocalProbesAndPrometheusMetrics() throws Exception {
+        assertEquals(200, rawManagement("/actuator/health/liveness").statusCode());
+        assertEquals(200, rawManagement("/actuator/health/readiness").statusCode());
+        HttpResponse<String> metrics = rawManagement("/actuator/prometheus");
+        assertEquals(200, metrics.statusCode(), metrics.body());
+        assertTrue(metrics.body().contains("jvm_memory_used_bytes"));
+        assertEquals(404, rawManagement("/actuator/env").statusCode());
+    }
+
+    private HttpResponse<String> rawManagement(String path) throws Exception {
+        return http.send(
+                HttpRequest.newBuilder(URI.create(managementBase + path))
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
     @Test
@@ -1058,7 +1083,10 @@ class CoreliaIntegrationTest {
                 java.nio.file.Files.readString(root.resolve(".local/secrets/corelia.tls.password"))
                         .trim());
         addresses.forEach((name, address) -> env.setProperty("corelia.services." + name, address));
-        return new ru.corelia.transport.ServiceClient(new ru.corelia.config.CoreliaConfig(env));
+        return new ru.corelia.transport.ServiceClient(
+                new ru.corelia.config.CoreliaConfig(env),
+                app.getBean(ru.corelia.observability.TraceContextPropagation.class),
+                app.getBean(ru.corelia.observability.CoreliaObservability.class));
     }
 
     @Test
