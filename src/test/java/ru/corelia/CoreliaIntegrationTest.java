@@ -77,6 +77,8 @@ class CoreliaIntegrationTest {
                                 "--management.server.port=0",
                                 "--management.endpoints.web.exposure.include=health,prometheus",
                                 "--management.endpoint.prometheus.access=unrestricted",
+                                "--management.tracing.export.otlp.enabled=false",
+                                "--management.opentelemetry.tracing.export.otlp.endpoint=",
                                 "--spring.main.banner-mode=off",
                                 "--spring.threads.virtual.enabled=true",
                                 "--corelia.service=" + service,
