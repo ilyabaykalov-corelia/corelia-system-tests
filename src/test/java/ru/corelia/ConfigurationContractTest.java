@@ -10,6 +10,10 @@ import ru.corelia.documents.*;
 import ru.corelia.auth.AuthContext;
 import ru.corelia.http.ApiException;
 import ru.corelia.transport.ServiceClient;
+import ru.corelia.provider.DocumentStore;
+import ru.corelia.provider.model.DocumentSearchRequest;
+import ru.corelia.provider.model.DocumentSearchResult;
+import ru.corelia.provider.model.DocumentSnapshot;
 import java.nio.file.Path;
 import java.util.*;
 
@@ -46,7 +50,7 @@ class ConfigurationContractTest {
         var config = load("customer-a");
         var permissions = PlatformVPermissionChecker.fromText(java.nio.file.Files.readString(Path.of("src/test/resources/customers/customer-a/platform-v-ac.json")), config);
         var services = mock(ServiceClient.class);
-        var repository = mock(DocumentRepository.class);
+        var repository = mock(DocumentStore.class);
         var versions = mock(DocumentVersionService.class);
         var versionRepository = mock(DocumentVersionRepository.class);
         var documentService = new DocumentService(permissions, new DocumentTypeCatalog(config), repository, services, versions, versionRepository);
@@ -133,11 +137,11 @@ class ConfigurationContractTest {
         var configured = new ConfigurationLoader.LoadedConfiguration(new DocumentTypeRegistry(List.of(
             new DocumentTypeDefinition(definition, loaded.operations().keySet()))), loaded.operations());
         var types = new DocumentTypeCatalog(configured);
-        var repository = mock(DocumentRepository.class);
+        var repository = mock(DocumentStore.class);
         var auth = mock(AuthContext.class);
-        when(repository.all("CONTRACT_Y", auth)).thenReturn(List.of(
-            object("id", "a", "attributes", object("title", "alpha", "value", 2)),
-            object("id", "b", "attributes", object("title", "beta", "value", 10))));
+        when(repository.search(any(DocumentSearchRequest.class), eq(auth))).thenReturn(new DocumentSearchResult(List.of(
+            new DocumentSnapshot("a", "CONTRACT_Y", "OPEN", Map.of("title", parse("\"alpha\""), "value", parse("2")), "", null, ""),
+            new DocumentSnapshot("b", "CONTRACT_Y", "OPEN", Map.of("title", parse("\"beta\""), "value", parse("10")), "", null, "")), 2));
         var service = new DocumentService(mock(ru.corelia.auth.PermissionChecker.class), types, repository, mock(ServiceClient.class), mock(DocumentVersionService.class), mock(DocumentVersionRepository.class));
         assertEquals("b", text(service.search("CONTRACT_Y", object(), auth).path("items").get(0), "id"));
         assertEquals(0, number(service.search("CONTRACT_Y", object("query", "10"), auth), "total", -1));
