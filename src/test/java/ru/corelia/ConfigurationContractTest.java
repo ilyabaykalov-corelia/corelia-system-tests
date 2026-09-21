@@ -32,7 +32,7 @@ class ConfigurationContractTest {
         var services = mock(ServiceClient.class);
         when(services.call(eq("workflow"), anyString(), eq("GET"), isNull(), eq(editor)))
             .thenReturn(object("executor", object("login", "alice", "role", "fixture_editor")));
-        var policy = new ConfiguredDocumentPolicy(services, new DocumentTypes(config), "CONTRACT_X", permissions);
+        var policy = new ConfiguredDocumentPolicy(services, new DocumentTypeCatalog(config), "CONTRACT_X", permissions);
         var document = object("documentId", "doc", "status", "OPEN");
         assertDoesNotThrow(() -> policy.authorize(document, "edit", editor));
         assertEquals(403, assertThrows(ApiException.class, () -> policy.authorize(document, "edit", stranger)).status());
@@ -49,19 +49,19 @@ class ConfigurationContractTest {
         var repository = mock(DocumentRepository.class);
         var versions = mock(DocumentVersionService.class);
         var versionRepository = mock(DocumentVersionRepository.class);
-        var documentService = new DocumentService(permissions, new DocumentTypes(config), repository, services, versions, versionRepository);
+        var documentService = new DocumentService(permissions, new DocumentTypeCatalog(config), repository, services, versions, versionRepository);
         var unauthorized = new AuthContext("token", "id", "alice", "Alice", "", List.of(), "alice");
         assertEquals(403, assertThrows(ApiException.class, () -> documentService.create("CONTRACT_X", object(), unauthorized)).status());
         verifyNoInteractions(services, repository, versions, versionRepository);
     }
     @Test void sberSchemaAcceptsValidDateAndInsuranceNumber() {
-        var types = new DocumentTypes(new ConfigurationLoader().load(Path.of("../../sber-npf-corelia-config"), "0.1.0"));
+        var types = new DocumentTypeCatalog(new ConfigurationLoader().load(Path.of("../../sber-npf-corelia-config"), "0.1.0"));
         assertDoesNotThrow(() -> types.validate("PDS_CONTRACT", object("contractDate", "2026-09-16", "contractNumber", "ПДС-1", "snils", "123-456-789 00"), false));
         assertThrows(ApiException.class, () -> types.validate("PDS_CONTRACT", object("contractDate", "2026-02-30", "contractNumber", "ПДС-1", "snils", "123-456-789 00"), false));
     }
     @Test void twoCustomersDoNotShareTypesSchemasOrMutableState() {
-        var a = new DocumentTypes(load("customer-a"));
-        var b = new DocumentTypes(load("customer-b"));
+        var a = new DocumentTypeCatalog(load("customer-a"));
+        var b = new DocumentTypeCatalog(load("customer-b"));
         assertEquals(2, a.types().size()); assertEquals(5, b.types().size());
         assertThrows(ApiException.class, () -> a.requireType("CONTRACT_G"));
         assertDoesNotThrow(() -> b.requireType("CONTRACT_G"));
@@ -73,7 +73,7 @@ class ConfigurationContractTest {
     }
     @Test void adaptersUseConfiguredProjectionsAndAtomicUpdateOperation() {
         for (String customer : List.of("customer-a", "customer-b")) {
-            var types = new DocumentTypes(load(customer));
+            var types = new DocumentTypeCatalog(load(customer));
             for (var type : types.types()) {
                 var definition = types.definition(type);
                 var mapping = definition.storage().path("fields");
@@ -108,7 +108,7 @@ class ConfigurationContractTest {
         }
     }
     @Test void workflowUsesConfiguredProcessAndExternalFieldNames() {
-        var types = new DocumentTypes(load("customer-a"));
+        var types = new DocumentTypeCatalog(load("customer-a"));
         var bpm = mock(BpmClient.class);
         var data = mock(DataSpaceClient.class);
         var environment = new org.springframework.mock.env.MockEnvironment()
@@ -132,7 +132,7 @@ class ConfigurationContractTest {
         ((tools.jackson.databind.node.ObjectNode) definition.path("ui")).putArray("sortFields").add("value");
         var configured = new ConfigurationLoader.LoadedConfiguration(new DocumentTypeRegistry(List.of(
             new DocumentTypeDefinition(definition, loaded.operations().keySet()))), loaded.operations());
-        var types = new DocumentTypes(configured);
+        var types = new DocumentTypeCatalog(configured);
         var repository = mock(DocumentRepository.class);
         var auth = mock(AuthContext.class);
         when(repository.all("CONTRACT_Y", auth)).thenReturn(List.of(
