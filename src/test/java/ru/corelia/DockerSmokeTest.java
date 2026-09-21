@@ -35,14 +35,7 @@ class DockerSmokeTest {
                 base = "http://" + address;
                 assertEquals(
                         "corelia-gateway", text(call("GET", "/api/core/v1/health", null, 200), "service"));
-                token =
-                        text(
-                                call(
-                                        "POST",
-                                        "/api/core/v1/auth/login",
-                                        object("username", "operator", "password", "secret"),
-                                        200),
-                                "accessToken");
+                token = platform.token("operator");
                 assertFalse(token.isEmpty());
                 assertEquals("operator", text(call("GET", "/api/core/v1/auth/me", null, 200), "login"));
                 assertEquals(
@@ -112,11 +105,11 @@ class DockerSmokeTest {
                 try {
                     command("up", "--no-build", "--wait", "--wait-timeout", "240");
                     Set<String> currentImages = new TreeSet<>(command("images", "--quiet").lines().filter(line -> !line.isBlank()).toList());
-                    assertEquals(5, currentImages.size());
+                    assertEquals(4, currentImages.size());
                     if (imageIds == null) imageIds = currentImages;
                     else assertEquals(imageIds, currentImages, "Customer switch must not rebuild or replace images");
                     base = "http://" + command("port", "corelia-gateway", "7170").trim();
-                    token = text(call("POST", "/api/core/v1/auth/login", object("username", "operator", "password", "secret"), 200), "accessToken");
+                    token = platform.token("operator");
                     var catalog = call("GET", "/api/core/v1/document-types", null, 200);
                     assertEquals(customer.equals("customer-a") ? 2 : 5, number(catalog, "total", 0));
                     for (JsonNode type : list(catalog.path("items"))) {
@@ -163,7 +156,6 @@ class DockerSmokeTest {
             for (String service :
                     List.of(
                             "gateway",
-                            "auth",
                             "document-service",
                             "workflow-service",
                             "attachment-service")) {

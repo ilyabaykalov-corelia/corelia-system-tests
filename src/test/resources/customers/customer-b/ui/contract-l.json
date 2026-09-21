@@ -1,0 +1,19 @@
+{
+  "id": "CONTRACT_L",
+  "ui": {
+    "columns": [
+      "title",
+      "value"
+    ],
+    "fields": [
+      "title",
+      "value"
+    ],
+    "searchFields": [
+      "title"
+    ],
+    "sortFields": [
+      "title"
+    ]
+  }
+}

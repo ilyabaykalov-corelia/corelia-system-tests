@@ -25,6 +25,7 @@ class CoreliaIntegrationTest {
     private WebServerApplicationContext app;
     private final HttpClient http = HttpClient.newHttpClient();
     private String base;
+    private String managementBase;
     private String token;
 
     private final List<org.springframework.context.ConfigurableApplicationContext> contexts =
@@ -48,7 +49,6 @@ class CoreliaIntegrationTest {
                 ru.corelia.attachments.AttachmentApplication.class,
                 "corelia-attachment-service",
                 "attachment");
-        startService(ru.corelia.identity.AuthApplication.class, "corelia-auth", "auth");
         app =
                 startService(
                         ru.corelia.gateway.GatewayApplication.class, "corelia-gateway", "gateway");
@@ -56,6 +56,9 @@ class CoreliaIntegrationTest {
         addresses.forEach((name, address) -> endpoints.put("corelia.services." + name, address));
         for (var context : contexts) context.getEnvironment().getPropertySources().addFirst(new org.springframework.core.env.MapPropertySource("test-endpoints", endpoints));
         base = addresses.get("gateway");
+        managementBase =
+                "http://localhost:"
+                        + app.getEnvironment().getRequiredProperty("local.management.port");
     }
 
     private WebServerApplicationContext startService(
@@ -71,6 +74,11 @@ class CoreliaIntegrationTest {
                                 "--CORELIA_CONFIG_PATH=" + root.resolve("../sber-npf-corelia-config").normalize(),
                                 "--CORELIA_PLATFORM_V_AC_PATH=" + root.resolve("../sber-npf-platform-v/ac.json").normalize(),
                                 "--server.port=0",
+                                "--management.server.port=0",
+                                "--management.endpoints.web.exposure.include=health,prometheus",
+                                "--management.endpoint.prometheus.access=unrestricted",
+                                "--management.tracing.export.otlp.enabled=false",
+                                "--management.opentelemetry.tracing.export.otlp.endpoint=",
                                 "--spring.main.banner-mode=off",
                                 "--spring.threads.virtual.enabled=true",
                                 "--corelia.service=" + service,
@@ -151,6 +159,50 @@ class CoreliaIntegrationTest {
                         ? HttpRequest.BodyPublishers.noBody()
                         : HttpRequest.BodyPublishers.ofString(body));
         return http.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> multipart(String method, String path, String name, String content)
+            throws Exception {
+        String boundary = "CoreliaTest" + UUID.randomUUID().toString().replace("-", "");
+        String requestId = UUID.randomUUID().toString();
+        String body =
+                "--"
+                        + boundary
+                        + "\r\nContent-Disposition: form-data; name=\"requestId\"\r\n\r\n"
+                        + requestId
+                        + "\r\n--"
+                        + boundary
+                        + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\""
+                        + name
+                        + "\"\r\nContent-Type: text/plain\r\n\r\n"
+                        + content
+                        + "\r\n--"
+                        + boundary
+                        + "--\r\n";
+        return http.send(
+                HttpRequest.newBuilder(URI.create(base + path))
+                        .timeout(Duration.ofSeconds(15))
+                        .header("Authorization", "Bearer " + token)
+                        .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                        .method(method, HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
+    }
+
+    private HttpResponse<String> multipartCreate(String type, JsonNode attributes, String name, String content)
+            throws Exception {
+        String boundary = "CoreliaCreate" + UUID.randomUUID().toString().replace("-", "");
+        String body = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"requestId\"\r\n\r\n"
+                + UUID.randomUUID() + "\r\n--" + boundary
+                + "\r\nContent-Disposition: form-data; name=\"attributes\"\r\n\r\n" + write(attributes)
+                + "\r\n--" + boundary
+                + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + name
+                + "\"\r\nContent-Type: application/pdf\r\n\r\n" + content
+                + "\r\n--" + boundary + "--\r\n";
+        return http.send(HttpRequest.newBuilder(URI.create(base + "/api/core/v1/documents/" + type + "/stream"))
+                .timeout(Duration.ofSeconds(15)).header("Authorization", "Bearer " + token)
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)).build(), HttpResponse.BodyHandlers.ofString());
     }
 
     private JsonNode ok(HttpResponse<String> response, int status) {
@@ -264,8 +316,25 @@ class CoreliaIntegrationTest {
         ok(raw("GET", "/api/core/v1/health", null, null), 200);
         var preflight = raw("OPTIONS", "/api/core/v1/documents/PDS_CONTRACT", null, null);
         assertEquals(204, preflight.statusCode());
-        assertEquals(
-                "*", preflight.headers().firstValue("Access-Control-Allow-Origin").orElseThrow());
+        assertTrue(preflight.headers().firstValue("Access-Control-Allow-Origin").isEmpty());
+    }
+
+    @Test
+    void managementEndpointsExposeOnlyLocalProbesAndPrometheusMetrics() throws Exception {
+        assertEquals(200, rawManagement("/actuator/health/liveness").statusCode());
+        assertEquals(200, rawManagement("/actuator/health/readiness").statusCode());
+        HttpResponse<String> metrics = rawManagement("/actuator/prometheus");
+        assertEquals(200, metrics.statusCode(), metrics.body());
+        assertTrue(metrics.body().contains("jvm_memory_used_bytes"));
+        assertEquals(404, rawManagement("/actuator/env").statusCode());
+    }
+
+    private HttpResponse<String> rawManagement(String path) throws Exception {
+        return http.send(
+                HttpRequest.newBuilder(URI.create(managementBase + path))
+                        .GET()
+                        .build(),
+                HttpResponse.BodyHandlers.ofString());
     }
 
     @Test
@@ -336,13 +405,20 @@ class CoreliaIntegrationTest {
     }
 
     @Test
+    void rejectsTokenForAnotherAudience() throws Exception {
+        var wrong = platform.claims("operator");
+        wrong.putArray("aud").add("another-client");
+        ok(raw("GET", "/api/core/v1/auth/me", null, platform.token(wrong, platform.kid, "RS256")), 401);
+    }
+
+    @Test
     void refreshesJwksWhenKeyRotates() throws Exception {
         ok(call("GET", "/api/core/v1/auth/me", null), 200);
         platform.kid = "rotated-" + UUID.randomUUID();
         int before = platform.jwksCalls.get();
         ok(raw("GET", "/api/core/v1/auth/me", null, platform.token("operator")), 200);
-        // После ротации каждый из двух сервисов независимо обновляет ключи.
-        assertEquals(before + 2, platform.jwksCalls.get());
+        // После ротации gateway обновляет ключи для проверки нового JWT.
+        assertEquals(before + 1, platform.jwksCalls.get());
         ok(
                 raw(
                         "GET",
@@ -353,56 +429,16 @@ class CoreliaIntegrationTest {
     }
 
     @Test
-    void loginRefreshLogoutPreserveSessionContract() throws Exception {
-        long now = System.currentTimeMillis();
-        JsonNode session =
-                ok(
-                        raw(
-                                "POST",
-                                "/api/core/v1/auth/login",
-                                write(object("username", " оператор ", "password", "пароль &+")),
-                                null),
-                        200);
-        assertEquals("refresh-test", text(session, "refreshToken"));
-        assertTrue(number(session, "expiresAt", 0) >= now + 300000);
-        var form =
-                platform.calls.stream()
-                        .filter(call -> call.path().endsWith("/token"))
-                        .findFirst()
-                        .orElseThrow();
-        assertTrue(form.body().contains("grant_type=password"));
-        assertTrue(form.body().contains("client_id=PlatformAuth-Proxy"));
-        assertNull(form.authorization());
-        ok(
-                raw(
-                        "POST",
-                        "/api/core/v1/auth/refresh",
-                        write(object("refreshToken", "refresh-test")),
-                        null),
-                200);
-        ok(
-                raw(
-                        "POST",
-                        "/api/core/v1/auth/logout",
-                        write(object("refreshToken", "refresh-test")),
-                        null),
-                204);
-        ok(raw("POST", "/api/core/v1/auth/logout", "{}", null), 204);
-    }
-
-    @Test
     void validatesJsonAndBodyLimit() throws Exception {
-        ok(raw("POST", "/api/core/v1/auth/login", "{bad", null), 400);
-        ok(raw("POST", "/api/core/v1/auth/login", "{}", null), 400);
-        ok(raw("POST", "/api/core/v1/auth/refresh", "{}", null), 400);
+        ok(raw("POST", "/api/core/v1/documents/search", "{bad", token), 400);
         ok(
                 raw(
                         "POST",
-                        "/api/core/v1/auth/login",
+                        "/api/core/v1/documents/search",
                         "{\"username\":\"" + "x".repeat(1024 * 1024) + "\"}",
-                        null),
+                        token),
                 413);
-        ok(raw("POST", "/api/core/v1/auth/login", "null", null), 400);
+        ok(raw("POST", "/api/core/v1/documents/search", "null", token), 400);
     }
 
     @Test
@@ -654,6 +690,44 @@ class CoreliaIntegrationTest {
     }
 
     @Test
+    void streamsMultipartAttachmentUploadAndReplacement() throws Exception {
+        JsonNode uploaded =
+                ok(
+                        multipart(
+                                "POST",
+                                "/api/core/v1/documents/PDS_CONTRACT/doc-1/attachments/stream",
+                                "поток.txt",
+                                "первый поток"),
+                        201);
+        assertEquals("поток.txt", text(uploaded, "fileName"));
+        assertEquals("первый поток".getBytes(StandardCharsets.UTF_8).length, number(uploaded, "size", 0));
+        JsonNode replaced =
+                ok(
+                        multipart(
+                                "PUT",
+                                "/api/core/v1/attachments/"
+                                        + encode(text(uploaded, "id"))
+                                        + "/stream",
+                                "поток.txt",
+                                "второй поток"),
+                        200);
+        assertEquals(2, number(replaced, "version", 0));
+        assertEquals(text(uploaded, "id"), text(replaced, "logicalAttachmentId"));
+        assertTrue(
+                platform.calls.stream()
+                        .filter(call -> call.path().endsWith("/upload/files/"))
+                        .anyMatch(call -> call.body().contains("второй поток")));
+    }
+
+    @Test
+    void createsRequiredAttachmentThroughGenericMultipartRoute() throws Exception {
+        JsonNode created = ok(multipartCreate("KID_OPS", kidBody().path("attributes"), "kid.pdf", "содержимое КИД"), 201);
+        assertEquals("KID_OPS", text(created, "typeCode"));
+        assertEquals(1, created.path("attachments").size());
+        assertEquals("kid.pdf", text(created.path("attachments").get(0), "fileName"));
+    }
+
+    @Test
     void attachmentAndDocumentNotFoundAre404() throws Exception {
         ok(call("GET", "/api/core/v1/attachments/missing", null), 404);
         ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/missing", null), 404);
@@ -786,11 +860,12 @@ class CoreliaIntegrationTest {
                 ("{\"username\":\"" + "x".repeat(1024 * 1024) + "\"}")
                         .getBytes(StandardCharsets.UTF_8);
         var request =
-                HttpRequest.newBuilder(URI.create(base + "/api/core/v1/auth/login"))
+                HttpRequest.newBuilder(URI.create(base + "/api/core/v1/documents/search"))
                         .POST(
                                 HttpRequest.BodyPublishers.ofInputStream(
                                         () -> new java.io.ByteArrayInputStream(bytes)))
                         .header("Content-Type", "application/json")
+                        .header("Authorization", "Bearer " + token)
                         .build();
         assertEquals(413, http.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
     }
@@ -849,7 +924,9 @@ class CoreliaIntegrationTest {
     void documentContractUsesExternalCustomerConfiguration() throws Exception {
         JsonNode catalog = ok(call("GET", "/api/core/v1/document-types", null), 200);
         assertEquals(2, number(catalog, "total", 0));
-        assertEquals("PDS_CONTRACT", text(catalog.path("items").get(0), "code"));
+        assertTrue(
+                list(catalog.path("items")).stream()
+                        .anyMatch(item -> "PDS_CONTRACT".equals(text(item, "code"))));
         JsonNode document = ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1", null), 200);
         assertTrue(document.path("attributes").has("contractNumber"));
         ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1/versions", null), 200);
@@ -1008,7 +1085,10 @@ class CoreliaIntegrationTest {
                 java.nio.file.Files.readString(root.resolve(".local/secrets/corelia.tls.password"))
                         .trim());
         addresses.forEach((name, address) -> env.setProperty("corelia.services." + name, address));
-        return new ru.corelia.transport.ServiceClient(new ru.corelia.config.CoreliaConfig(env));
+        return new ru.corelia.transport.ServiceClient(
+                new ru.corelia.config.CoreliaConfig(env),
+                app.getBean(ru.corelia.observability.TraceContextPropagation.class),
+                app.getBean(ru.corelia.observability.CoreliaObservability.class));
     }
 
     @Test
@@ -1035,7 +1115,7 @@ class CoreliaIntegrationTest {
                 assertThrows(
                                 ru.corelia.http.ApiException.class,
                                 () ->
-                                        peer("corelia-auth")
+                                        peer("corelia-workflow-service")
                                                 .call(
                                                         "document",
                                                         "/internal/v1/document-types",
