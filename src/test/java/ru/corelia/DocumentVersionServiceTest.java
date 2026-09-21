@@ -7,6 +7,8 @@ import static ru.corelia.support.Json.*;
 import org.junit.jupiter.api.Test;
 import ru.corelia.auth.AuthContext;
 import ru.corelia.documents.*;
+import ru.corelia.provider.DocumentStore;
+import ru.corelia.provider.model.DocumentSnapshot;
 import tools.jackson.databind.JsonNode;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -16,7 +18,7 @@ class DocumentVersionServiceTest {
     @Test
     void snapshotsUseThePolicySchemaAndPreserveNestedAttributesOfAnotherType() {
         var repository = mock(DocumentVersionRepository.class);
-        var documents = mock(DocumentRepository.class);
+        var documents = mock(DocumentStore.class);
         var policy = mock(DocumentPolicy.class);
         var auth = mock(AuthContext.class);
         when(auth.login()).thenReturn("operator");
@@ -31,7 +33,7 @@ class DocumentVersionServiceTest {
                 "version", 1, "schemaVersion", 3, "attributes", write(attributes), "attachments", "[]"));
         when(repository.document(eq("APPLICATION"), eq("application-1"), eq(auth))).thenAnswer(i -> state.get());
         when(repository.versions("application-1", auth)).thenAnswer(i -> List.copyOf(snapshots));
-        when(documents.get("APPLICATION", "application-1", auth)).thenReturn(object("id", "application-1", "typeCode", "APPLICATION", "status", "OPEN"));
+        when(documents.get("APPLICATION", "application-1", auth)).thenReturn(new DocumentSnapshot("application-1", "APPLICATION", "OPEN", Map.of(), "", null, "token-1"));
         doAnswer(invocation -> {
             JsonNode created = invocation.getArgument(3);
             assertEquals(3, number(created, "schemaVersion", 0));
