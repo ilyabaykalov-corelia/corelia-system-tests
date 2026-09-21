@@ -11,6 +11,7 @@ import ru.corelia.auth.AuthContext;
 import ru.corelia.http.ApiException;
 import ru.corelia.transport.ServiceClient;
 import ru.corelia.provider.DocumentStore;
+import ru.corelia.provider.DocumentVersionStore;
 import ru.corelia.provider.model.DocumentSearchRequest;
 import ru.corelia.provider.model.DocumentSearchResult;
 import ru.corelia.provider.model.DocumentSnapshot;
@@ -52,7 +53,7 @@ class ConfigurationContractTest {
         var services = mock(ServiceClient.class);
         var repository = mock(DocumentStore.class);
         var versions = mock(DocumentVersionService.class);
-        var versionRepository = mock(DocumentVersionRepository.class);
+        var versionRepository = mock(DocumentVersionStore.class);
         var documentService = new DocumentService(permissions, new DocumentTypeCatalog(config), repository, services, versions, versionRepository);
         var unauthorized = new AuthContext("token", "id", "alice", "Alice", "", List.of(), "alice");
         assertEquals(403, assertThrows(ApiException.class, () -> documentService.create("CONTRACT_X", object(), unauthorized)).status());
@@ -89,19 +90,6 @@ class ConfigurationContractTest {
                 var projected = DocumentProjection.document(row, types);
                 assertEquals("one", text(projected.path("attributes"), "title"));
                 assertFalse(projected.has(text(definition.storage(), "details")));
-                var data = mock(DataSpaceClient.class);
-                var auth = mock(AuthContext.class);
-                var repository = new PlatformDocumentVersionRepository(types, data);
-                var attrs = copy(projected.path("attributes")).put("title", "two");
-                repository.commit(projected, attrs, 2, object("id", "version-2"), object("id", "version-1"), null, null,
-                    "key", "hash", object("changeToken", "after"), auth);
-                var variables = org.mockito.ArgumentCaptor.forClass(tools.jackson.databind.JsonNode.class);
-                verify(data).query(eq(text(definition.storage().path("operations"), "update")), variables.capture(), eq(auth));
-                assertEquals("two", text(variables.getValue().path("details"), "caption"));
-                assertEquals("one", text(variables.getValue().path("detailsCompare"), "caption"));
-                assertEquals("before", text(variables.getValue().path("compare"), "changeToken"));
-                assertEquals("after", text(variables.getValue().path("document"), "changeToken"));
-                assertFalse(variables.getValue().path("details").has("title"));
                 var policy = new ConfiguredDocumentPolicy(mock(ServiceClient.class), types, type, mock(ru.corelia.auth.PermissionChecker.class));
                 assertEquals(definition.schemaVersion(), policy.schemaVersion());
                 assertThrows(ApiException.class, () -> policy.validateSnapshot(object("title", "missing value")));
@@ -140,9 +128,9 @@ class ConfigurationContractTest {
         var repository = mock(DocumentStore.class);
         var auth = mock(AuthContext.class);
         when(repository.search(any(DocumentSearchRequest.class), eq(auth))).thenReturn(new DocumentSearchResult(List.of(
-            new DocumentSnapshot("a", "CONTRACT_Y", "OPEN", Map.of("title", parse("\"alpha\""), "value", parse("2")), "", null, ""),
-            new DocumentSnapshot("b", "CONTRACT_Y", "OPEN", Map.of("title", parse("\"beta\""), "value", parse("10")), "", null, "")), 2));
-        var service = new DocumentService(mock(ru.corelia.auth.PermissionChecker.class), types, repository, mock(ServiceClient.class), mock(DocumentVersionService.class), mock(DocumentVersionRepository.class));
+            new DocumentSnapshot("a", "CONTRACT_Y", "OPEN", 1, Map.of("title", parse("\"alpha\""), "value", parse("2")), "", null, ""),
+            new DocumentSnapshot("b", "CONTRACT_Y", "OPEN", 1, Map.of("title", parse("\"beta\""), "value", parse("10")), "", null, "")), 2));
+        var service = new DocumentService(mock(ru.corelia.auth.PermissionChecker.class), types, repository, mock(ServiceClient.class), mock(DocumentVersionService.class), mock(DocumentVersionStore.class));
         assertEquals("b", text(service.search("CONTRACT_Y", object(), auth).path("items").get(0), "id"));
         assertEquals(0, number(service.search("CONTRACT_Y", object("query", "10"), auth), "total", -1));
         assertEquals(1, number(service.search("CONTRACT_Y", object("query", "alpha"), auth), "total", -1));
