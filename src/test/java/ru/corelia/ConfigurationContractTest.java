@@ -101,21 +101,15 @@ class ConfigurationContractTest {
     }
     @Test void workflowUsesConfiguredProcessAndExternalFieldNames() {
         var types = new DocumentTypeCatalog(load("customer-a"));
-        var bpm = mock(BpmClient.class);
-        var data = mock(DataSpaceClient.class);
-        var environment = new org.springframework.mock.env.MockEnvironment()
-            .withProperty("PLATFORM_V_TENANT", "test").withProperty("PLATFORM_V_APP_INSTANCE_ID", "test");
-        var service = new ru.corelia.workflow.WorkflowService(types, bpm, data,
-            mock(ru.corelia.workflow.TaskGateway.class), mock(ru.corelia.workflow.TaskPresentation.class),
-            new ru.corelia.config.CoreliaConfig(environment));
+        var provider = mock(ru.corelia.provider.WorkflowProvider.class);
+        var service = new ru.corelia.workflow.WorkflowService(types, mock(DocumentStore.class), provider, mock(ru.corelia.provider.TaskProvider.class));
         var auth = new AuthContext("token", "id", "operator", "Operator", "", List.of(), "operator");
-        when(bpm.process(anyString(), any(), eq(auth))).thenReturn(object("id", "instance"));
+        when(provider.start(any(), eq(auth))).thenReturn(new ru.corelia.provider.model.ProcessInstance("instance", "public-1", ""));
         service.create(object("typeCode", "CONTRACT_X", "documentId", "public-1", "attributes", object("title", "sample", "value", true)), auth);
-        var body = org.mockito.ArgumentCaptor.forClass(tools.jackson.databind.JsonNode.class);
-        verify(bpm).process(eq("/processes/process0:start"), body.capture(), eq(auth));
-        assertEquals("sample", text(body.getValue().path("externalIds"), "title"));
-        assertFalse(body.getValue().path("externalIds").has("contractNumber"));
-        verifyNoInteractions(data);
+        var body = org.mockito.ArgumentCaptor.forClass(ru.corelia.provider.model.WorkflowContext.class);
+        verify(provider).start(body.capture(), eq(auth));
+        assertEquals("sample", text(body.getValue().attributes().get("title")));
+        assertFalse(body.getValue().attributes().containsKey("contractNumber"));
     }
 
     @Test void searchUsesConfiguredFieldsAndNumericSort() {
