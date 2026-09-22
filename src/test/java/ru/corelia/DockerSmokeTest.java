@@ -130,24 +130,45 @@ class DockerSmokeTest {
     private Path prepareCatalogFixture(String customer) throws Exception {
         Path fixture = root.resolve("corelia-system-tests/src/test/resources/customers/" + customer);
         Path output = root.resolve("corelia-system-tests/target/docker-catalog-" + customer);
-        Files.createDirectories(output.resolve("graphql"));
-        var config = copy(parse(Files.readString(fixture.resolve("configuration.json"))));
-        var operations = copy(config.path("operations"));
-        try (var files = Files.list(fixture.resolve("graphql"))) {
-            for (Path file : files.toList()) Files.copy(file, output.resolve("graphql").resolve(file.getFileName()), StandardCopyOption.REPLACE_EXISTING);
-        }
-        // Common adapter startup operations are supplied as static texts, not executed by this catalog-only test.
+        recreateDirectory(output);
+        copyDirectory(fixture.resolve("data-model"), output.resolve("data-model"));
+        copyDirectory(fixture.resolve("ui"), output.resolve("ui"));
+        copyDirectory(fixture.resolve("permissions"), output.resolve("permissions"));
+        copyDirectory(fixture.resolve("operations"), output.resolve("operations"));
+        copyDirectory(fixture.resolve("graphql"), output.resolve("graphql"));
+        // Общие операции adapter-а добавляются к внешнему каталогу без legacy поля configuration.operations.
         Path migration = root.resolve("../sber-npf-corelia-config");
-        var common = parse(Files.readString(migration.resolve("configuration.json"))).path("operations");
         for (String name : List.of("searchDocument", "searchDocumentVersion", "searchDocumentCommand", "searchAttachment", "initializeDocumentVersion", "commitDocumentNoChange", "commitDocumentFileUpload", "commitDocumentFileReplace", "commitDocumentFileDelete", "searchDocumentProcessSettings", "refDocumentTypeListGet")) {
-            operations.set(name, common.path(name));
-            Path file = Path.of(text(common.path(name), "file"));
-            Files.copy(migration.resolve(file), output.resolve(file), StandardCopyOption.REPLACE_EXISTING);
+            Path operation = migration.resolve("operations").resolve(name.replaceAll("([a-z0-9])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT) + ".json");
+            Path copiedOperation = output.resolve("operations").resolve(operation.getFileName());
+            Files.copy(operation, copiedOperation, StandardCopyOption.REPLACE_EXISTING);
+            String graphql = text(parse(Files.readString(operation)), "file");
+            Path source = operation.getParent().resolve(graphql).normalize();
+            Path target = copiedOperation.getParent().resolve(graphql).normalize();
+            Files.createDirectories(target.getParent());
+            Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
         }
-        config.set("operations", operations);
+        var config = copy(parse(Files.readString(fixture.resolve("configuration.json"))));
         Files.writeString(output.resolve("configuration.json"), write(config));
         Files.copy(fixture.resolve("platform-v-ac.json"), output.resolve("platform-v-ac.json"), StandardCopyOption.REPLACE_EXISTING);
         return output;
+    }
+
+    private static void copyDirectory(Path source, Path target) throws Exception {
+        try (var files = Files.walk(source)) {
+            for (Path file : files.toList()) {
+                Path relative = source.relativize(file), destination = target.resolve(relative);
+                if (Files.isDirectory(file)) Files.createDirectories(destination);
+                else Files.copy(file, destination, StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+    }
+
+    private static void recreateDirectory(Path directory) throws Exception {
+        if (Files.exists(directory)) try (var files = Files.walk(directory)) {
+            for (Path file : files.sorted(Comparator.reverseOrder()).toList()) Files.delete(file);
+        }
+        Files.createDirectories(directory);
     }
 
     private void prepareOverlay(PlatformStub platform, Path accessControl) throws Exception {
