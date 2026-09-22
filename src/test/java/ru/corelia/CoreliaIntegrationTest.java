@@ -926,10 +926,12 @@ class CoreliaIntegrationTest {
         assertEquals(2, number(catalog, "total", 0));
         assertTrue(
                 list(catalog.path("items")).stream()
-                        .anyMatch(item -> "PDS_CONTRACT".equals(text(item, "code"))));
+                        .anyMatch(item -> "PDS_CONTRACT".equals(text(item, "code")) && "Договор ПДС".equals(text(item, "name"))));
         JsonNode document = ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1", null), 200);
         assertTrue(document.path("attributes").has("contractNumber"));
-        ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1/versions", null), 200);
+        assertEquals("2026-09-01T10:00:00Z", text(document, "createdAt"));
+        JsonNode versions = ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1/versions", null), 200);
+        assertFalse(versions.path("items").get(0).path("createdAt").asText().isBlank());
         ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1/versions/1", null), 200);
         JsonNode updated =
                 ok(
@@ -939,6 +941,8 @@ class CoreliaIntegrationTest {
                                 object("attributes", object("contractNumber", "ПДС-42"))),
                         200);
         assertEquals("ПДС-42", text(updated.path("attributes"), "contractNumber"));
+        JsonNode attachment = ok(call("POST", "/api/core/v1/documents/PDS_CONTRACT/doc-1/attachments", upload("date.txt", "timestamp")), 201).get(0);
+        assertFalse(text(attachment, "uploadedAt").isBlank());
         ok(
                 call(
                         "PATCH",
