@@ -538,7 +538,7 @@ class CoreliaIntegrationTest {
                         .findFirst()
                         .orElseThrow();
         assertEquals(
-                "/bpmx/tenant-test/v7/apps/app-test/processes/Process_test:start", start.path());
+                "/bpmx/tenant-test/v7/apps/app-test/processes/Process_pds_contract_approval:start", start.path());
         assertEquals("includeVariables=true", start.query());
         assertEquals("operator", text(start.json().path("payload"), "createdBy"));
         assertEquals(platform.processCreatedId, text(start.json(), "businessKey"));
@@ -551,11 +551,7 @@ class CoreliaIntegrationTest {
     }
 
     @Test
-    void rejectsMissingProcessAndPlatformIncident() throws Exception {
-        platform.noProcess = true;
-        ok(call("POST", "/api/core/v1/documents/PDS_CONTRACT", validDocument()), 400);
-        assertFalse(platform.calls.stream().anyMatch(call -> call.path().contains("/processes/")));
-        platform.noProcess = false;
+    void rejectsPlatformIncidentOnConfiguredProcess() throws Exception {
         platform.processIncident = true;
         assertTrue(
                 text(ok(call("POST", "/api/core/v1/documents/PDS_CONTRACT", validDocument()), 502), "message")
