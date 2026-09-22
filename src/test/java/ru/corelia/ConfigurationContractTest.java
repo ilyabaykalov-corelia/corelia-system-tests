@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import ru.corelia.configuration.*;
 import ru.corelia.platformv.PlatformVPermissionChecker;
 import ru.corelia.platformv.PlatformVDocumentBindings;
+import ru.corelia.platformv.PlatformVOperationCatalog;
 import ru.corelia.platformv.DocumentProjection;
 import ru.corelia.documents.*;
 import ru.corelia.auth.AuthContext;
@@ -82,7 +83,7 @@ class ConfigurationContractTest {
         for (String customer : List.of("customer-a", "customer-b")) {
             var configuration = load(customer);
             var types = new DocumentTypeCatalog(configuration);
-            var bindings = new PlatformVDocumentBindings(configuration);
+            var bindings = new PlatformVDocumentBindings(configuration, new PlatformVOperationCatalog(configuration));
             for (var type : types.types()) {
                 var definition = types.definition(type);
                 var storage = bindings.storage(type);
@@ -122,7 +123,7 @@ class ConfigurationContractTest {
         var definition = (tools.jackson.databind.node.ObjectNode) loaded.documentTypes().require("CONTRACT_Y").definition();
         ((tools.jackson.databind.node.ObjectNode) definition.path("ui")).putArray("sortFields").add("value");
         var configured = new ConfigurationLoader.LoadedConfiguration(new DocumentTypeRegistry(List.of(
-            new DocumentTypeDefinition(definition))), loaded.providerBindings(), loaded.operations());
+            new DocumentTypeDefinition(definition))), loaded.providerBindings(), loaded.packageRoot());
         var types = new DocumentTypeCatalog(configured);
         var repository = mock(DocumentStore.class);
         var auth = mock(AuthContext.class);
