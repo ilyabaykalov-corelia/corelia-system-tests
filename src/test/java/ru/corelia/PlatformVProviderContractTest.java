@@ -49,6 +49,7 @@ import ru.corelia.provider.model.DocumentMutation;
 import ru.corelia.provider.model.DocumentSnapshot;
 import ru.corelia.provider.model.DocumentVersion;
 import ru.corelia.provider.model.StorageReference;
+import ru.corelia.provider.model.WorkflowContext;
 import ru.corelia.provider.model.WorkflowTask;
 import ru.corelia.support.ParallelCalls;
 import tools.jackson.databind.JsonNode;
@@ -113,6 +114,15 @@ class PlatformVProviderContractTest extends ProviderContractTest {
         assertFalse(previous.has("createdAt"));
         assertFalse(previous.has("closedAt"));
         assertEquals("version-1", previous.path("id").asString());
+    }
+
+    @Test void writesDocumentCreationTimeWithDataspacePrecision() {
+        platform.reset();
+
+        fixture.workflows().start(new WorkflowContext("doc-created-at", "PDS_CONTRACT", Map.of(), "user", "key", null, "create", "hash"), fixture.allowedAuth());
+
+        var request = platform.calls.stream().filter(call -> call.path().contains("/processes/")).findFirst().orElseThrow();
+        assertTrue(request.json().path("payload").path("createdAt").asString().matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}"));
     }
 
     private static final class Fixture implements ProviderFixture {
