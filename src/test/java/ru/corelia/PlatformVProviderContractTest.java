@@ -122,6 +122,7 @@ class PlatformVProviderContractTest extends ProviderContractTest {
         fixture.workflows().start(new WorkflowContext("doc-created-at", "PDS_CONTRACT", Map.of(), "user", "key", null, "create", "hash"), fixture.allowedAuth());
 
         var request = platform.calls.stream().filter(call -> call.path().contains("/processes/")).findFirst().orElseThrow();
+        assertTrue(request.path().contains("/processes/Process_pds_contract_approval:start"));
         assertTrue(request.json().path("payload").path("createdAt").asString().matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}"));
     }
 
