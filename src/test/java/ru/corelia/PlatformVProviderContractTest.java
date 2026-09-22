@@ -46,6 +46,7 @@ import ru.corelia.provider.tck.ProviderContractTest;
 import ru.corelia.provider.tck.ProviderFixture;
 import ru.corelia.provider.model.AttachmentMetadata;
 import ru.corelia.provider.model.DocumentMutation;
+import ru.corelia.provider.model.DocumentCreation;
 import ru.corelia.provider.model.DocumentSnapshot;
 import ru.corelia.provider.model.DocumentVersion;
 import ru.corelia.provider.model.StorageReference;
@@ -119,11 +120,23 @@ class PlatformVProviderContractTest extends ProviderContractTest {
     @Test void writesDocumentCreationTimeWithDataspacePrecision() {
         platform.reset();
 
-        fixture.workflows().start(new WorkflowContext("doc-created-at", "PDS_CONTRACT", Map.of(), "user", "key", null, "create", "hash"), fixture.allowedAuth());
+        fixture.workflows().start(new WorkflowContext("doc-1", "PDS_CONTRACT", Map.of(), "user", "key", null, "create", "hash"), fixture.allowedAuth());
 
         var request = platform.calls.stream().filter(call -> call.path().contains("/processes/")).findFirst().orElseThrow();
         assertTrue(request.path().contains("/processes/Process_pds_contract_approval:start"));
         assertTrue(request.json().path("payload").path("createdAt").asString().matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}"));
+    }
+
+    @Test void rejectsCreationBeforeConfiguredDocumentTypeIsPublished() {
+        platform.missingDocumentType = true;
+
+        var error = assertThrows(ApiException.class, () -> fixture.documents().create(
+                new DocumentCreation("new-doc", "PDS_CONTRACT", Map.of(), "CREATED", "user", Instant.EPOCH,
+                        null, "request", "hash"), fixture.allowedAuth()));
+
+        assertEquals(503, error.status());
+        assertTrue(error.getMessage().contains("PDS_CONTRACT"));
+        assertFalse(platform.calls.stream().anyMatch(call -> call.json().path("query").asString().startsWith("mutation createPdsContract")));
     }
 
     private static final class Fixture implements ProviderFixture {

@@ -212,6 +212,7 @@ class CoreliaIntegrationTest {
 
     private JsonNode validDocument() {
         return object(
+                "requestId", UUID.randomUUID().toString(),
                 "attributes",
                 object(
                         "contractDate", "2026-09-07",
@@ -243,7 +244,18 @@ class CoreliaIntegrationTest {
     @Test
     void kidRequiresInitialFileAndValidatesItsOwnAttributesBeforeStartingProcess() throws Exception {
         var body = copy(kidBody()); body.remove("initialAttachment");
-        ok(call("POST", "/api/core/v1/documents/KID_OPS", body), 400);
+        JsonNode created = ok(call("POST", "/api/core/v1/documents/KID_OPS", body), 201);
+        assertEquals("CREATED", text(created, "status"));
+        assertTrue(created.path("attachments").isEmpty());
+        assertNull(platform.processCreatedId);
+        String id = text(created, "id");
+        JsonNode attachment = kidBody().path("initialAttachment");
+        ok(call("POST", "/api/core/v1/documents/KID_OPS/" + id + "/attachments",
+                object("requestId", UUID.randomUUID().toString(), "attachments", List.of(attachment))), 201);
+        assertEquals(id, platform.processCreatedId);
+        assertEquals(1, platform.calls.stream().filter(call -> call.path().contains("/processes/")).count());
+        JsonNode start = platform.calls.stream().filter(call -> call.path().contains("/processes/")).findFirst().orElseThrow().json();
+        assertEquals("123-456-789 00", text(start.path("payload"), "snils"));
         for (String field : List.of("contractNumber", "contractDate", "signingYear", "lastName", "firstName", "snils")) {
             body = copy(kidBody()); ((tools.jackson.databind.node.ObjectNode)body.path("attributes")).remove(field);
             ok(call("POST", "/api/core/v1/documents/KID_OPS", body), 400);
@@ -254,18 +266,25 @@ class CoreliaIntegrationTest {
         ok(call("POST", "/api/core/v1/documents/KID_OPS", body), 400);
         body = copy(kidBody()); ((tools.jackson.databind.node.ObjectNode)body.path("attributes")).put("contractNumber", "PDS-123");
         ok(call("POST", "/api/core/v1/documents/KID_OPS", body), 400);
-        assertNull(platform.processCreatedId);
+        assertEquals(id, platform.processCreatedId);
     }
 
     @Test
-    void kidUploadFailureDoesNotStartProcessOrCreateDocument() throws Exception {
+    void kidUploadFailureKeepsCreatedDocumentForIdempotentRetry() throws Exception {
         platform.failUpload = true;
-        var before = copy(platform.document);
-        int status = call("POST", "/api/core/v1/documents/KID_OPS", kidBody()).statusCode();
+        JsonNode body = kidBody();
+        int status = call("POST", "/api/core/v1/documents/KID_OPS", body).statusCode();
         assertTrue(status >= 500);
         assertNull(platform.processCreatedId);
-        assertEquals(before, platform.document);
+        assertEquals("KID_OPS", text(platform.document.path("documentType"), "id"));
+        assertEquals("CREATED", text(platform.details(), "status"));
         assertTrue(platform.attachments.isEmpty());
+        platform.failUpload = false;
+        JsonNode retried = ok(call("POST", "/api/core/v1/documents/KID_OPS", body), 201);
+        assertEquals(text(platform.document, "documentId"), text(retried, "id"));
+        assertEquals(1, platform.attachments.size());
+        assertEquals(text(retried, "id"), platform.processCreatedId);
+        assertEquals(1, platform.calls.stream().filter(call -> call.path().contains("/processes/")).count());
     }
 
     @Test
@@ -530,7 +549,7 @@ class CoreliaIntegrationTest {
     void createsOnlyThroughConfiguredApplicationProcess() throws Exception {
         JsonNode created = ok(call("POST", "/api/core/v1/documents/PDS_CONTRACT", validDocument()), 201);
         assertEquals(platform.processCreatedId, text(created, "id"));
-        assertEquals("FROM-PLATFORM", text(created.path("attributes"), "contractNumber"));
+        assertEquals("NEW-1", text(created.path("attributes"), "contractNumber"));
         assertEquals("process-1", text(created, "processInstanceId"));
         var start =
                 platform.calls.stream()
@@ -541,13 +560,17 @@ class CoreliaIntegrationTest {
                 "/bpmx/tenant-test/v7/apps/app-test/processes/Process_pds_contract_approval:start", start.path());
         assertEquals("includeVariables=true", start.query());
         assertEquals("operator", text(start.json().path("payload"), "createdBy"));
+        assertEquals(text(created, "id"), text(start.json().path("payload"), "documentId"));
+        assertEquals("PDS_CONTRACT", text(start.json().path("payload"), "documentType"));
+        assertTrue(start.json().path("payload").hasNonNull("id"));
+        assertFalse(start.json().path("payload").has("contractDate"));
         assertEquals(platform.processCreatedId, text(start.json(), "businessKey"));
-        assertFalse(
-                platform.calls.stream()
-                        .filter(call -> call.path().equals("/graphql"))
-                        .anyMatch(call -> text(call.json(), "query").startsWith("mutation")
-                            && !text(call.json(), "query").startsWith("mutation commitDocument")
-                            && !text(call.json(), "query").startsWith("mutation initializeDocumentVersion")));
+        var create = platform.calls.stream()
+                .filter(call -> call.path().equals("/graphql") && text(call.json(), "query").startsWith("mutation createPdsContract"))
+                .findFirst().orElseThrow();
+        assertEquals("CREATED", text(create.json().path("variables").path("input"), "status"));
+        assertFalse(create.json().toString().contains("DRAFT"));
+        assertTrue(platform.calls.indexOf(create) < platform.calls.indexOf(start));
     }
 
     @Test

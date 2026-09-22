@@ -38,7 +38,7 @@
   },
   {
     "name": "createPdsContract",
-    "body": "mutation createPdsContract($document: _CreateDocumentInput!, $input: _CreatePdsContractInput!) { packet { createDocument(input: $document) { id documentId documentType { id name } } createPdsContract(input: $input) { id status } } }",
+    "body": "mutation createPdsContract($document: _CreateDocumentInput!, $input: _CreatePdsContractInput!, $command: _CreateDocumentCommandInput!) { packet { createDocument(input: $document) { id documentId } createPdsContract(input: $input) { id status } createDocumentCommand(input: $command) { id } } }",
     "checkForAnyPrivilege": [
       "PdsContract:create"
     ]
@@ -194,7 +194,7 @@
   },
   {
     "name": "createKidOps",
-    "body": "mutation createKidOps($document: _CreateDocumentInput!, $input: _CreateKidOpsInput!, $file: _CreateAttachmentInput!, $command: _CreateDocumentCommandInput!) { packet { createDocument(input: $document) { id documentId documentType { id name } } createKidOps(input: $input) { id status } createAttachment(input: $file) { id } createDocumentCommand(input: $command) { id } } }",
+    "body": "mutation createKidOps($document: _CreateDocumentInput!, $input: _CreateKidOpsInput!, $command: _CreateDocumentCommandInput!) { packet { createDocument(input: $document) { id documentId documentType { id name } } createKidOps(input: $input) { id status } createDocumentCommand(input: $command) { id } } }",
     "checkForAnyPrivilege": [
       "KidOps:create"
     ]

@@ -107,9 +107,12 @@ class ConfigurationContractTest {
     }
     @Test void workflowUsesConfiguredProcessAndExternalFieldNames() {
         var types = new DocumentTypeCatalog(load("customer-a"));
-        var provider = mock(ru.corelia.provider.WorkflowProvider.class);
-        var service = new ru.corelia.workflow.WorkflowService(types, mock(DocumentStore.class), provider, mock(ru.corelia.provider.TaskProvider.class));
         var auth = new AuthContext("token", "id", "operator", "Operator", "", List.of(), "operator");
+        var provider = mock(ru.corelia.provider.WorkflowProvider.class);
+        var versions = mock(ru.corelia.provider.DocumentVersionStore.class);
+        var tasks = mock(ru.corelia.provider.TaskProvider.class);
+        when(tasks.findByDocument("public-1", auth)).thenReturn(List.of());
+        var service = new ru.corelia.workflow.WorkflowService(types, mock(DocumentStore.class), versions, provider, tasks);
         when(provider.start(any(), eq(auth))).thenReturn(new ru.corelia.provider.model.ProcessInstance("instance", "public-1", ""));
         service.create(object("typeCode", "CONTRACT_X", "documentId", "public-1", "attributes", object("title", "sample", "value", true)), auth);
         var body = org.mockito.ArgumentCaptor.forClass(ru.corelia.provider.model.WorkflowContext.class);
