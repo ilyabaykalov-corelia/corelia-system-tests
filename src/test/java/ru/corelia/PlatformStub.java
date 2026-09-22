@@ -441,7 +441,11 @@ final class PlatformStub implements AutoCloseable {
             var rows = documentCommands.values().stream().filter(c -> cond.contains(text(c, "commandKey"))).toList();
             result = object("searchDocumentCommand", object("elems", rows, "count", rows.size()));
         } else if (name.equals("initializeDocumentVersion")) {
-            if (number(document, "version", 0) != 0) {
+            JsonNode actualToken = document.get("changeToken");
+            JsonNode expectedToken = variables.path("compare").get("changeToken");
+            if (number(document, "version", 0) != 0
+                    || !Objects.equals(actualToken == null ? MAPPER.nullNode() : actualToken,
+                    expectedToken == null ? MAPPER.nullNode() : expectedToken)) {
                 json(exchange, 200, object("errors", List.of(object("message", "COMPARE_NOT_EQUAL")))); return;
             }
             var version = copy(variables.path("version")); version.put("id", "version-1");

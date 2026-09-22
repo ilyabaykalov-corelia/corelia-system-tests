@@ -1,5 +1,9 @@
 package ru.corelia;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static ru.corelia.support.Json.object;
@@ -13,6 +17,7 @@ import java.util.Map;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
 import org.springframework.core.env.Environment;
 import ru.corelia.auth.AuthContext;
 import ru.corelia.cache.UserCache;
@@ -35,8 +40,10 @@ import ru.corelia.platformv.PlatformVDocumentBindings;
 import ru.corelia.platformv.PlatformVOperationCatalog;
 import ru.corelia.platformv.PlatformVPermissionChecker;
 import ru.corelia.platformv.PlatformWorkflowProvider;
+import ru.corelia.http.ApiException;
 import ru.corelia.provider.tck.ProviderContractTest;
 import ru.corelia.provider.tck.ProviderFixture;
+import ru.corelia.provider.model.DocumentMutation;
 import ru.corelia.provider.model.DocumentSnapshot;
 import ru.corelia.provider.model.DocumentVersion;
 import ru.corelia.provider.model.WorkflowTask;
@@ -50,6 +57,36 @@ class PlatformVProviderContractTest extends ProviderContractTest {
     @BeforeAll static void startPlatform() throws Exception { platform = new PlatformStub(); fixture = new Fixture(platform); }
     @AfterAll static void stopPlatform() { if (platform != null) platform.close(); }
     @Override protected ProviderFixture fixture() { platform.reset(); platform.download = "data".getBytes(java.nio.charset.StandardCharsets.UTF_8); return fixture; }
+
+    @Test void initializesFirstVersionWhenDataSpaceChangeTokenIsNull() {
+        platform.reset();
+        var document = new DocumentSnapshot("doc-1", "PDS_CONTRACT", "DRAFT", 0,
+                Map.of("contractNumber", object("value", "PDS-001")), "user", Instant.EPOCH, null);
+        var initial = new DocumentVersion("version-0", "doc-1", 0, 1,
+                Map.of("contractNumber", object("value", "PDS-001")), "DRAFT", Instant.EPOCH, "user", null, List.of());
+        var first = new DocumentVersion("", "doc-1", 1, 1,
+                Map.of("contractNumber", object("value", "PDS-001")), "DRAFT", Instant.EPOCH, "user", null, List.of());
+        fixture.seed(document, initial);
+
+        assertNull(fixture.documents().get("PDS_CONTRACT", "doc-1", fixture.allowedAuth()).changeToken());
+        fixture.versions().commit(new DocumentMutation("doc-1", "PDS_CONTRACT", 0, null,
+                Map.of("contractNumber", object("value", "PDS-001")), first, null, null, null,
+                "initialize-null-token", "hash", object("version", 1)), fixture.allowedAuth());
+
+        assertEquals(1, fixture.versions().state("PDS_CONTRACT", "doc-1", fixture.allowedAuth()).document().currentVersion());
+        var request = platform.calls.stream().filter(call -> call.path().equals("/graphql"))
+                .filter(call -> call.json().path("query").asString().startsWith("mutation initializeDocumentVersion")).findFirst().orElseThrow();
+        assertTrue(request.json().path("variables").path("compare").path("changeToken").isNull());
+    }
+
+    @Test void rejectsExistingDocumentWithStaleChangeToken() {
+        var error = assertThrows(ApiException.class, () -> fixture.versions().commit(new DocumentMutation("doc-1", "PDS_CONTRACT", 1, "stale-token",
+                Map.of("contractNumber", object("value", "PDS-002")), new DocumentVersion("version-2", "doc-1", 2, 1,
+                Map.of("contractNumber", object("value", "PDS-002")), "DRAFT", Instant.EPOCH, "user", null, List.of()),
+                new DocumentVersion("version-1", "doc-1", 1, 1, Map.of("contractNumber", object("value", "PDS-001")),
+                        "DRAFT", Instant.EPOCH, "user", null, List.of()), null, null, "stale-token", "hash", object()), fixture.allowedAuth()));
+        assertEquals(409, error.status());
+    }
 
     private static final class Fixture implements ProviderFixture {
         private final PlatformDocumentStore documents;
