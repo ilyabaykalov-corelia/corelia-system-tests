@@ -6,6 +6,7 @@ import static ru.corelia.support.Json.*;
 import org.junit.jupiter.api.Test;
 import ru.corelia.configuration.*;
 import ru.corelia.platformv.PlatformVPermissionChecker;
+import ru.corelia.platformv.PlatformVDocumentBindings;
 import ru.corelia.platformv.DocumentProjection;
 import ru.corelia.documents.*;
 import ru.corelia.auth.AuthContext;
@@ -19,7 +20,7 @@ import ru.corelia.provider.model.DocumentSnapshot;
 import java.nio.file.Path;
 import java.util.*;
 
-/** Same product classes with independent, dissimilar customer registries and nonidentity mappings. */
+/** Независимые реестры документов и разные mapping для тестовых заказчиков. */
 class ConfigurationContractTest {
     private ConfigurationLoader.LoadedConfiguration load(String customer) {
         return new ConfigurationLoader().load(Path.of("src/test/resources/customers", customer), "0.1.0");
@@ -79,18 +80,21 @@ class ConfigurationContractTest {
     }
     @Test void adaptersUseConfiguredProjectionsAndAtomicUpdateOperation() {
         for (String customer : List.of("customer-a", "customer-b")) {
-            var types = new DocumentTypeCatalog(load(customer));
+            var configuration = load(customer);
+            var types = new DocumentTypeCatalog(configuration);
+            var bindings = new PlatformVDocumentBindings(configuration);
             for (var type : types.types()) {
                 var definition = types.definition(type);
-                var mapping = definition.storage().path("fields");
+                var storage = bindings.storage(type);
+                var mapping = storage.path("fields");
                 var row = object("id", "model-1", "documentId", "public-1", "version", 1,
                     "documentType", object("id", type), "changeToken", "before");
                 var details = object("id", "details-1", "status", "OPEN", "caption", "one");
                 details.set(text(mapping, "value"), definition.schema().definition().path("properties").path("value").path("type").asString().equals("boolean") ? parse("true") : parse("100.5"));
-                row.set(text(definition.storage(), "details"), details);
-                var projected = DocumentProjection.document(row, types);
+                row.set(text(storage, "details"), details);
+                var projected = DocumentProjection.document(row, types, bindings);
                 assertEquals("one", text(projected.path("attributes"), "title"));
-                assertFalse(projected.has(text(definition.storage(), "details")));
+                assertFalse(projected.has(text(storage, "details")));
                 var policy = new ConfiguredDocumentPolicy(mock(ServiceClient.class), types, type, mock(ru.corelia.auth.PermissionChecker.class));
                 assertEquals(definition.schemaVersion(), policy.schemaVersion());
                 assertThrows(ApiException.class, () -> policy.validateSnapshot(object("title", "missing value")));
@@ -118,7 +122,7 @@ class ConfigurationContractTest {
         var definition = (tools.jackson.databind.node.ObjectNode) loaded.documentTypes().require("CONTRACT_Y").definition();
         ((tools.jackson.databind.node.ObjectNode) definition.path("ui")).putArray("sortFields").add("value");
         var configured = new ConfigurationLoader.LoadedConfiguration(new DocumentTypeRegistry(List.of(
-            new DocumentTypeDefinition(definition, loaded.operations().keySet()))), loaded.operations());
+            new DocumentTypeDefinition(definition))), loaded.providerBindings(), loaded.operations());
         var types = new DocumentTypeCatalog(configured);
         var repository = mock(DocumentStore.class);
         var auth = mock(AuthContext.class);
