@@ -96,7 +96,7 @@ class ConfigurationContractTest {
                 var projected = DocumentProjection.document(row, types, bindings);
                 assertEquals("one", text(projected.path("attributes"), "title"));
                 assertFalse(projected.has(text(storage, "details")));
-                var policy = new ConfiguredDocumentPolicy(mock(ServiceClient.class), types, type, mock(ru.corelia.auth.PermissionChecker.class));
+                var policy = new ConfiguredDocumentPolicy(mock(ServiceClient.class), types, type, mock(ru.corelia.provider.PermissionProvider.class));
                 assertEquals(definition.schemaVersion(), policy.schemaVersion());
                 assertThrows(ApiException.class, () -> policy.validateSnapshot(object("title", "missing value")));
                 int maximum = definition.attachments().path("maxCount").asInt();
@@ -130,7 +130,7 @@ class ConfigurationContractTest {
         when(repository.search(any(DocumentSearchRequest.class), eq(auth))).thenReturn(new DocumentSearchResult(List.of(
             new DocumentSnapshot("a", "CONTRACT_Y", "OPEN", 1, Map.of("title", parse("\"alpha\""), "value", parse("2")), "", null, ""),
             new DocumentSnapshot("b", "CONTRACT_Y", "OPEN", 1, Map.of("title", parse("\"beta\""), "value", parse("10")), "", null, "")), 2));
-        var service = new DocumentService(mock(ru.corelia.auth.PermissionChecker.class), types, repository, mock(ServiceClient.class), mock(DocumentVersionService.class), mock(DocumentVersionStore.class));
+        var service = new DocumentService(mock(ru.corelia.provider.PermissionProvider.class), types, repository, mock(ServiceClient.class), mock(DocumentVersionService.class), mock(DocumentVersionStore.class));
         assertEquals("b", text(service.search("CONTRACT_Y", object(), auth).path("items").get(0), "id"));
         assertEquals(0, number(service.search("CONTRACT_Y", object("query", "10"), auth), "total", -1));
         assertEquals(1, number(service.search("CONTRACT_Y", object("query", "alpha"), auth), "total", -1));
