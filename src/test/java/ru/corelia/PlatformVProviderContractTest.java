@@ -1,6 +1,7 @@
 package ru.corelia;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -43,11 +44,14 @@ import ru.corelia.platformv.PlatformWorkflowProvider;
 import ru.corelia.http.ApiException;
 import ru.corelia.provider.tck.ProviderContractTest;
 import ru.corelia.provider.tck.ProviderFixture;
+import ru.corelia.provider.model.AttachmentMetadata;
 import ru.corelia.provider.model.DocumentMutation;
 import ru.corelia.provider.model.DocumentSnapshot;
 import ru.corelia.provider.model.DocumentVersion;
+import ru.corelia.provider.model.StorageReference;
 import ru.corelia.provider.model.WorkflowTask;
 import ru.corelia.support.ParallelCalls;
+import tools.jackson.databind.JsonNode;
 
 /** Запускает reusable SPI TCK через реальные Platform V adapters и локальный HTTP stub. */
 class PlatformVProviderContractTest extends ProviderContractTest {
@@ -86,6 +90,29 @@ class PlatformVProviderContractTest extends ProviderContractTest {
                 new DocumentVersion("version-1", "doc-1", 1, 1, Map.of("contractNumber", object("value", "PDS-001")),
                         "DRAFT", Instant.EPOCH, "user", null, List.of()), null, null, "stale-token", "hash", object()), fixture.allowedAuth()));
         assertEquals(409, error.status());
+    }
+
+    @Test void attachmentUploadOmitsAbsentVersionTimestamps() {
+        platform.reset();
+        var document = new DocumentSnapshot("doc-1", "PDS_CONTRACT", "DRAFT", 1,
+                Map.of("contractNumber", object("value", "PDS-001")), "user", Instant.EPOCH, "token-1");
+        var initial = new DocumentVersion("version-1", "doc-1", 1, 1,
+                Map.of("contractNumber", object("value", "PDS-001")), "DRAFT", null, "user", null, List.of());
+        var uploaded = new AttachmentMetadata("attachment-1", "attachment-1", "doc-1", "file.txt", "text/plain", 4,
+                1, true, Instant.EPOCH, new StorageReference("provider://attachment-1"));
+        var manifest = new DocumentVersion("version-1", "doc-1", 1, 1,
+                Map.of("contractNumber", object("value", "PDS-001")), "DRAFT", null, "user", null, List.of(uploaded));
+        fixture.seed(document, initial);
+
+        fixture.versions().commit(new DocumentMutation("doc-1", "PDS_CONTRACT", 1, "token-1", Map.of(), null,
+                manifest, uploaded, null, "attachment-null-timestamp", "hash", object()), fixture.allowedAuth());
+
+        var request = platform.calls.stream().filter(call -> call.path().equals("/graphql"))
+                .filter(call -> call.json().path("query").asString().startsWith("mutation commitDocumentFileUpload")).findFirst().orElseThrow();
+        JsonNode previous = request.json().path("variables").path("previous");
+        assertFalse(previous.has("createdAt"));
+        assertFalse(previous.has("closedAt"));
+        assertEquals("version-1", previous.path("id").asString());
     }
 
     private static final class Fixture implements ProviderFixture {
@@ -144,9 +171,13 @@ class PlatformVProviderContractTest extends ProviderContractTest {
         public void seed(DocumentSnapshot document, DocumentVersion version) {
             platform.document.put("version", document.currentVersion()).put("changeToken", document.changeToken());
             platform.details().put("status", "IN_WORK").put("contractNumber", document.attributes().get("contractNumber").path("value").asString());
-            if (version.number() > 0) platform.documentVersions.put("version-" + version.number(), object("id", "version-" + version.number(), "documentId", document.id(), "version", version.number(),
-                    "schemaVersion", 1, "attributes", write(object("contractNumber", document.attributes().get("contractNumber"))),
-                    "attachments", "[]", "createdBy", "user", "createdAt", Instant.EPOCH.toString(), "status", "IN_WORK"));
+            if (version.number() > 0) {
+                var stored = object("id", "version-" + version.number(), "documentId", document.id(), "version", version.number(),
+                        "schemaVersion", 1, "attributes", write(object("contractNumber", document.attributes().get("contractNumber"))),
+                        "attachments", "[]", "createdBy", "user", "status", "IN_WORK");
+                if (version.createdAt() != null) stored.put("createdAt", version.createdAt().toString());
+                platform.documentVersions.put("version-" + version.number(), stored);
+            }
         }
         public void seed(WorkflowTask task) {
             platform.task.put("id", task.id()).put("status", "NEW");

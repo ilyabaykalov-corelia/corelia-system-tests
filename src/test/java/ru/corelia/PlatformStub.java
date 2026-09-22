@@ -455,6 +455,11 @@ final class PlatformStub implements AutoCloseable {
         } else if (Set.of("commitKidOpsAttributes", "commitDocumentAttributes", "commitDocumentNoChange", "commitDocumentFileUpload", "commitDocumentFileReplace", "commitDocumentFileDelete").contains(name)) {
             if (!"true".equals(exchange.getRequestHeaders().getFirst("X-DSPC-multiaggregate")))
                 throw new IllegalStateException("Missing multiaggregate header");
+            for (String field : List.of("createdAt", "closedAt")) {
+                JsonNode value = variables.path("previous").get(field);
+                if (value != null && value.isTextual() && value.asString().isEmpty())
+                    throw new IllegalArgumentException("Empty _DateTime in previous." + field);
+            }
             boolean matches = true;
             for (var field : variables.path("compare").properties()) {
                 JsonNode actual = document.get(field.getKey());

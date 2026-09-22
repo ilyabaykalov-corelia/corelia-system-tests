@@ -1072,6 +1072,27 @@ class CoreliaIntegrationTest {
         assertEquals(1, platform.documentVersions.size());
     }
 
+    @Test
+    void attachmentRetryAfterMetadataFailureReusesTheStagedDamPath() throws Exception {
+        String path = "/api/core/v1/documents/PDS_CONTRACT/doc-1";
+        JsonNode upload = upload("file.txt", "staged bytes");
+        String requestId = text(upload, "requestId");
+        String childRequest = UUID.nameUUIDFromBytes((requestId + ":0").getBytes(StandardCharsets.UTF_8)).toString();
+        String attachmentId = UUID.nameUUIDFromBytes(("doc-1:" + childRequest).getBytes(StandardCharsets.UTF_8)).toString();
+
+        platform.failVersionCommit = true;
+        ok(call("POST", path + "/attachments", upload), 502);
+        assertTrue(platform.attachments.isEmpty());
+        platform.failVersionCommit = false;
+
+        ok(call("POST", path + "/attachments", upload), 201);
+        assertEquals(1, platform.attachments.size());
+        String damPath = "documents/doc-1/uploads/" + attachmentId + "/";
+        var uploads = platform.calls.stream().filter(call -> call.path().endsWith("/upload/files/")).toList();
+        assertEquals(2, uploads.size());
+        assertTrue(uploads.stream().allMatch(call -> call.body().contains(damPath)));
+    }
+
     private ru.corelia.transport.ServiceClient peer(String service) throws Exception {
         var env = new org.springframework.mock.env.MockEnvironment();
         env.setProperty(
