@@ -153,17 +153,17 @@ final class PlatformStub implements AutoCloseable {
                                                 "label",
                                                 "Согласовать",
                                                 "result",
-                                                object("approvalStatus", "APPROVED")),
+                                                object("status", "APPROVED")),
                                         object(
                                                 "label",
                                                 "Отказать",
                                                 "result",
-                                                object("approvalStatus", "REJECTED")),
+                                                object("status", "REJECTED")),
                                         object(
                                                 "label",
                                                 "Взять в работу",
                                                 "result",
-                                                object("approvalStatus", "IN_WORK")))));
+                                                object("status", "IN_WORK")))));
     }
 
     ObjectNode claims(String login) {
@@ -269,7 +269,7 @@ final class PlatformStub implements AutoCloseable {
                 if (!processIncident) {
                     boolean kid = text(call.json().path("payload"), "documentType").equals("KID_OPS");
                     // Процесс получает уже сохранённый документ и не создаёт ни документ, ни вложение.
-                    if (kid) task.set("completions", object("options", List.of(object("label", "Взять в работу", "result", object("approvalStatus", "IN_WORK")))));
+                    if (kid) task.set("completions", object("options", List.of(object("label", "Взять в работу", "result", object("status", "IN_WORK")))));
                     task.set("attributes", object("documentId", object("value", processCreatedId), "documentType", documentType()));
                     task.put("status", "NEW").putNull("assignee");
                     noTask = false;
@@ -320,7 +320,7 @@ final class PlatformStub implements AutoCloseable {
                 if (!failedOperation) {
                     details().put(
                             "status",
-                            text(call.json().path("parameters"), "approvalStatus"));
+                            text(call.json().path("parameters"), "status"));
                     boolean kidFollowUp = documentType().equals("KID_OPS") && text(details(), "status").equals("IN_WORK");
                     noTask = !(returnFollowUp || kidFollowUp);
                     if (returnFollowUp || kidFollowUp) {
@@ -329,7 +329,7 @@ final class PlatformStub implements AutoCloseable {
                                         .put("id", "task-2")
                                         .put("status", "NEW")
                                         .putNull("assignee");
-                        if (kidFollowUp) task.set("completions", object("options", List.of(object("label", "Отправить на хранение", "result", object("approvalStatus", "STORED")))));
+                        if (kidFollowUp) task.set("completions", object("options", List.of(object("label", "Отправить на хранение", "result", object("status", "STORED")))));
                     }
                 }
                 operation(exchange, text(call.json().path("userTaskIds").get(0)));

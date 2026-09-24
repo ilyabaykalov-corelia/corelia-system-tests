@@ -298,7 +298,7 @@ class CoreliaIntegrationTest {
         assertEquals(id, text(ok(call("POST", "/api/core/v1/documents/KID_OPS", body), 201), "id"));
         assertEquals(1, platform.calls.stream().filter(c -> c.path().contains("/processes/")).count());
         JsonNode first = ok(call("GET", path, null), 200);
-        ok(call("POST", "/api/core/v1/tasks/" + id + "/action", object("approvalStatus", "IN_WORK")), 200);
+        ok(call("POST", "/api/core/v1/tasks/" + id + "/action", object("status", "IN_WORK")), 200);
         JsonNode current = ok(call("GET", path, null), 200);
         String taskId = text(current.path("workflow").path("task"), "id");
         JsonNode patch = object("requestId", UUID.randomUUID().toString(), "expectedVersion", 1, "changeToken", text(current, "changeToken"),
@@ -310,7 +310,7 @@ class CoreliaIntegrationTest {
         assertEquals(taskId, text(ok(call("GET", path, null), 200).path("workflow").path("task"), "id"));
         String file = text(first.path("attachments").get(0), "id");
         ok(call("PUT", "/api/core/v1/attachments/" + file, object("requestId", UUID.randomUUID().toString(), "attachments", List.of(body.path("initialAttachment")))), 200);
-        JsonNode stored = ok(call("POST", "/api/core/v1/tasks/" + id + "/action", object("approvalStatus", "STORED")), 200);
+        JsonNode stored = ok(call("POST", "/api/core/v1/tasks/" + id + "/action", object("status", "STORED")), 200);
         assertEquals("STORED", text(stored, "status"));
         assertEquals(2, number(stored, "version", 0));
         assertTrue(stored.path("availableActions").isEmpty());
@@ -792,7 +792,7 @@ class CoreliaIntegrationTest {
                         .findFirst()
                         .orElseThrow();
         assertEquals("operator", text(complete.json(), "clientLogin"));
-        assertEquals("APPROVED", text(complete.json().path("parameters"), "approvalStatus"));
+        assertEquals("APPROVED", text(complete.json().path("parameters"), "status"));
     }
 
     @Test
@@ -813,7 +813,7 @@ class CoreliaIntegrationTest {
                         call(
                                 "POST",
                                 "/api/core/v1/tasks/task-1/action",
-                                object("parameters", object("approvalStatus", "REJECTED"))),
+                                object("parameters", object("status", "REJECTED"))),
                         200);
         document = ok(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1", null), 200);
         assertEquals("REJECTED", text(document, "status"));
@@ -907,8 +907,8 @@ class CoreliaIntegrationTest {
             platform.noTask = false;
             platform.task.put("status", "NEW");
             platform.task.set("completions", object("options", List.of(
-                    object("label", status, "result", object("approvalStatus", status)))));
-            JsonNode updated = ok(call("POST", "/api/core/v1/tasks/" + id + "/action", object("approvalStatus", status)), 200);
+                    object("label", status, "result", object("status", status)))));
+            JsonNode updated = ok(call("POST", "/api/core/v1/tasks/" + id + "/action", object("status", status)), 200);
             assertEquals(status, text(updated, "status"));
             assertEquals(id, text(updated, "id"));
             assertEquals(1, updated.path("attachments").size());
@@ -922,7 +922,7 @@ class CoreliaIntegrationTest {
         assertEquals(card.path("workflow").path("availableActions"), card.path("availableActions"));
         assertEquals("operator", text(card.path("executor"), "login"));
         JsonNode updated = ok(call("POST", "/api/core/v1/tasks/doc-1/action",
-                object("approvalStatus", "APPROVED")), 200);
+                object("status", "APPROVED")), 200);
         assertEquals("doc-1", text(updated, "id"));
         assertEquals("PDS_CONTRACT", text(updated, "documentTypeId"));
         assertEquals("PDS-001", text(updated, "contractNumber"));
@@ -1031,7 +1031,7 @@ class CoreliaIntegrationTest {
         assertEquals(text(a3, "id"), text(ok(call("GET", path + "/versions/1", null), 200).path("attachments").get(0), "id"));
         assertEquals(200, call("GET", "/api/core/v1/attachments/" + text(a3, "id"), null).statusCode());
         assertEquals(4, platform.attachments.size());
-        ok(call("POST", "/api/core/v1/tasks/doc-1/action", object("approvalStatus", "APPROVED")), 200);
+        ok(call("POST", "/api/core/v1/tasks/doc-1/action", object("status", "APPROVED")), 200);
         assertEquals("APPROVED", text(platform.details(), "status"));
         assertEquals(2, number(platform.document, "version", 0));
     }
