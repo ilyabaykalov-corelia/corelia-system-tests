@@ -3,13 +3,13 @@ package ru.corelia;
 import static org.junit.jupiter.api.Assertions.*;
 import static ru.corelia.support.Json.*;
 import org.junit.jupiter.api.Test;
-import ru.corelia.integration.DocumentTypes;
+import ru.corelia.configuration.DocumentTypeCatalog;
 import ru.corelia.configuration.ConfigurationLoader;
 import java.nio.file.Path;
 import ru.corelia.http.ApiException;
 
 class KidOpsValidationTest {
-    private final DocumentTypes types = new DocumentTypes(new ConfigurationLoader().load(
+    private final DocumentTypeCatalog types = new DocumentTypeCatalog(new ConfigurationLoader().load(
         Path.of("../../sber-npf-corelia-config"), "0.1.0"));
     @Test
     void validatesLengthsFormatsAndOptionalMiddleName() {

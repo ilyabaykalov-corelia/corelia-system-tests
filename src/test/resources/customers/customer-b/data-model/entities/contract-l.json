@@ -21,7 +21,7 @@
         "type": "string"
       },
       "value": {
-        "minimum": 0,
+        "min": 0,
         "type": "number"
       }
     },
