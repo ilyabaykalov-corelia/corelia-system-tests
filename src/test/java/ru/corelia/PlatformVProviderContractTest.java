@@ -85,6 +85,17 @@ class PlatformVProviderContractTest extends ProviderContractTest {
         assertTrue(request.json().path("variables").path("compare").path("changeToken").isNull());
     }
 
+    @Test void persistsHistoryTogetherWithTheSuccessfulCommand() {
+        platform.reset();
+        var document = new DocumentSnapshot("doc-1", "PDS_CONTRACT", "DRAFT", 1, Map.of("contractNumber", object("value", "PDS-001")), "user", Instant.EPOCH, "token-1");
+        var current = new DocumentVersion("version-1", "doc-1", 1, 1, document.attributes(), "DRAFT", Instant.EPOCH, "user", null, List.of());
+        fixture.seed(document, current);
+        JsonNode event = object("id", "1:ATTACHMENT_ADDED:file-1:1", "timestamp", "2026-09-15T10:00:00Z", "userLogin", "operator", "action", "ATTACHMENT_ADDED", "documentVersion", 1);
+        fixture.versions().commit(new DocumentMutation("doc-1", "PDS_CONTRACT", 1, "token-1", Map.of(), null, null, null, null,
+                "history-command", "history-hash", object("changeToken", "token-2"), event), fixture.allowedAuth());
+        assertEquals(List.of(event), fixture.versions().history("doc-1", fixture.allowedAuth()));
+    }
+
     @Test void rejectsExistingDocumentWithStaleChangeToken() {
         var error = assertThrows(ApiException.class, () -> fixture.versions().commit(new DocumentMutation("doc-1", "PDS_CONTRACT", 1, "stale-token",
                 Map.of("contractNumber", object("value", "PDS-002")), new DocumentVersion("version-2", "doc-1", 2, 1,

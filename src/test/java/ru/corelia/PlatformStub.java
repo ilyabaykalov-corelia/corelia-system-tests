@@ -428,7 +428,7 @@ final class PlatformStub implements AutoCloseable {
             result = object("searchDocumentVersion", object("elems", new ArrayList<>(documentVersions.values()), "count", documentVersions.size()));
         } else if (name.equals("searchDocumentCommand")) {
             String cond = text(variables, "cond");
-            var rows = documentCommands.values().stream().filter(c -> cond.contains(text(c, "commandKey"))).toList();
+            var rows = documentCommands.values().stream().filter(c -> cond.contains(text(c, "commandKey")) || cond.contains(text(c.path("document"), "documentId"))).toList();
             result = object("searchDocumentCommand", object("elems", rows, "count", rows.size()));
         } else if (name.equals("initializeDocumentVersion")) {
             JsonNode actualToken = document.get("changeToken");
@@ -488,7 +488,7 @@ final class PlatformStub implements AutoCloseable {
             if (variables.has("retired")) attachments.get(text(variables.path("retired"), "id")).put("current", false);
             variables.path("details").properties().forEach(e -> details().set(e.getKey(), e.getValue()));
             variables.path("document").properties().forEach(e -> document.set(e.getKey(), e.getValue()));
-            documentCommands.put(key, copy(variables.path("command")));
+            var command = copy(variables.path("command")); command.set("document", object("documentId", text(document, "documentId"))); documentCommands.put(key, command);
             if (loseVersionResponse) { loseVersionResponse = false; json(exchange, 503, object("message", "Response lost after commit")); return; }
             result = object("packet", object("updateDocument", object("id", text(document, "id"))));
         } else if (name.equals("createPdsContract") || name.equals("createKidOps")) {
@@ -499,7 +499,7 @@ final class PlatformStub implements AutoCloseable {
             input.properties().forEach(entry -> { if (!entry.getKey().equals("document")) created.set(entry.getKey(), entry.getValue()); });
             document = created;
             nestDetails(name.equals("createKidOps") ? "kid-created" : "pds-created");
-            documentCommands.put(text(variables.path("command"), "commandKey"), copy(variables.path("command")));
+            var command = copy(variables.path("command")); command.set("document", object("documentId", text(document, "documentId"))); documentCommands.put(text(command, "commandKey"), command);
             result = object("packet", object("createDocument", object("id", "model-created", "documentId", text(document, "documentId")),
                     name.equals("createKidOps") ? "createKidOps" : "createPdsContract", object("id", details().path("id").asString(), "status", text(details(), "status")),
                     "createDocumentCommand", object("id", "command-created")));
