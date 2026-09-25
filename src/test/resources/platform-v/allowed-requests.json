@@ -166,21 +166,21 @@
   },
   {
     "name": "commitDocumentFileUpload",
-    "body": "mutation commitDocumentFileUpload($document: _UpdateDocumentInput!, $compare: _CompareDocumentInput!, $previous: _UpdateDocumentVersionInput!, $version: _CreateDocumentVersionInput!, $file: _CreateAttachmentInput!, $command: _CreateDocumentCommandInput!) { packet { updateDocument(input: $document, compare: $compare) { id } updateDocumentVersion(input: $previous) { id } createDocumentVersion(input: $version) { id } createAttachment(input: $file) { id } createDocumentCommand(input: $command) { id } } }",
+    "body": "mutation commitDocumentFileUpload($document: _UpdateDocumentInput!, $compare: _CompareDocumentInput!, $previous: _UpdateDocumentVersionInput!, $file: _CreateAttachmentInput!, $command: _CreateDocumentCommandInput!) { packet { updateDocument(input: $document, compare: $compare) { id } updateDocumentVersion(input: $previous) { id } createAttachment(input: $file) { id } createDocumentCommand(input: $command) { id } } }",
     "checkForAnyPrivilege": [
       "DocumentVersion:commit"
     ]
   },
   {
     "name": "commitDocumentFileReplace",
-    "body": "mutation commitDocumentFileReplace($document: _UpdateDocumentInput!, $compare: _CompareDocumentInput!, $previous: _UpdateDocumentVersionInput!, $version: _CreateDocumentVersionInput!, $file: _CreateAttachmentInput!, $retired: _UpdateAttachmentInput!, $command: _CreateDocumentCommandInput!) { packet { updateDocument(input: $document, compare: $compare) { id } updateDocumentVersion(input: $previous) { id } createDocumentVersion(input: $version) { id } createAttachment(input: $file) { id } updateAttachment(input: $retired) { id } createDocumentCommand(input: $command) { id } } }",
+    "body": "mutation commitDocumentFileReplace($document: _UpdateDocumentInput!, $compare: _CompareDocumentInput!, $previous: _UpdateDocumentVersionInput!, $file: _CreateAttachmentInput!, $retired: _UpdateAttachmentInput!, $command: _CreateDocumentCommandInput!) { packet { updateDocument(input: $document, compare: $compare) { id } updateDocumentVersion(input: $previous) { id } createAttachment(input: $file) { id } updateAttachment(input: $retired) { id } createDocumentCommand(input: $command) { id } } }",
     "checkForAnyPrivilege": [
       "DocumentVersion:commit"
     ]
   },
   {
     "name": "commitDocumentFileDelete",
-    "body": "mutation commitDocumentFileDelete($document: _UpdateDocumentInput!, $compare: _CompareDocumentInput!, $previous: _UpdateDocumentVersionInput!, $version: _CreateDocumentVersionInput!, $retired: _UpdateAttachmentInput!, $command: _CreateDocumentCommandInput!) { packet { updateDocument(input: $document, compare: $compare) { id } updateDocumentVersion(input: $previous) { id } createDocumentVersion(input: $version) { id } updateAttachment(input: $retired) { id } createDocumentCommand(input: $command) { id } } }",
+    "body": "mutation commitDocumentFileDelete($document: _UpdateDocumentInput!, $compare: _CompareDocumentInput!, $previous: _UpdateDocumentVersionInput!, $retired: _UpdateAttachmentInput!, $command: _CreateDocumentCommandInput!) { packet { updateDocument(input: $document, compare: $compare) { id } updateDocumentVersion(input: $previous) { id } updateAttachment(input: $retired) { id } createDocumentCommand(input: $command) { id } } }",
     "checkForAnyPrivilege": [
       "DocumentVersion:commit"
     ]
