@@ -102,12 +102,12 @@ class PlatformVProviderContractTest extends ProviderContractTest {
                 Map.of("contractNumber", object("value", "PDS-001")), "DRAFT", null, "user", null, List.of());
         var uploaded = new AttachmentMetadata("attachment-1", "attachment-1", "doc-1", "file.txt", "text/plain", 4,
                 1, true, Instant.EPOCH, new StorageReference("provider://attachment-1"));
-        var manifest = new DocumentVersion("version-1", "doc-1", 1, 1,
+        var next = new DocumentVersion("version-2", "doc-1", 2, 1,
                 Map.of("contractNumber", object("value", "PDS-001")), "DRAFT", null, "user", null, List.of(uploaded));
         fixture.seed(document, initial);
 
-        fixture.versions().commit(new DocumentMutation("doc-1", "PDS_CONTRACT", 1, "token-1", Map.of(), null,
-                manifest, uploaded, null, "attachment-null-timestamp", "hash", object()), fixture.allowedAuth());
+        fixture.versions().commit(new DocumentMutation("doc-1", "PDS_CONTRACT", 1, "token-1", Map.of(), next,
+                initial, uploaded, null, "attachment-null-timestamp", "hash", object("changeToken", "token-2")), fixture.allowedAuth());
 
         var request = platform.calls.stream().filter(call -> call.path().equals("/graphql"))
                 .filter(call -> call.json().path("query").asString().startsWith("mutation commitDocumentFileUpload")).findFirst().orElseThrow();
@@ -115,6 +115,8 @@ class PlatformVProviderContractTest extends ProviderContractTest {
         assertFalse(previous.has("createdAt"));
         assertFalse(previous.has("closedAt"));
         assertEquals("version-1", previous.path("id").asString());
+        assertTrue(request.json().path("variables").path("version").path("version").asInt() == 2);
+        assertEquals("token-2", request.json().path("variables").path("document").path("changeToken").asString());
     }
 
     @Test void writesDocumentCreationTimeWithDataspacePrecision() {
