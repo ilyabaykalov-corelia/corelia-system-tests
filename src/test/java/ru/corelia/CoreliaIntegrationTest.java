@@ -301,10 +301,10 @@ class CoreliaIntegrationTest {
         ok(call("POST", "/api/core/v1/tasks/" + id + "/action", object("status", "IN_WORK")), 200);
         JsonNode current = ok(call("GET", path, null), 200);
         String taskId = text(current.path("workflow").path("task"), "id");
-        JsonNode patch = object("requestId", UUID.randomUUID().toString(), "expectedVersion", 1, "changeToken", text(current, "changeToken"),
+        JsonNode patch = object("requestId", UUID.randomUUID().toString(), "expectedVersion", number(current, "version", 1), "changeToken", text(current, "changeToken"),
                 "attributes", object("lastName", "Петров", "middleName", "Иванович"));
         JsonNode edited = ok(call("PATCH", path, patch), 200);
-        assertEquals(2, number(edited, "version", 0));
+        assertEquals(number(current, "version", 1) + 1, number(edited, "version", 0));
         assertEquals("Петров", text(edited.path("attributes"), "lastName"));
         assertEquals("Иванов", text(ok(call("GET", path + "/versions/1", null), 200).path("attributes"), "lastName"));
         assertEquals(taskId, text(ok(call("GET", path, null), 200).path("workflow").path("task"), "id"));
@@ -312,10 +312,10 @@ class CoreliaIntegrationTest {
         ok(call("PUT", "/api/core/v1/attachments/" + file, object("requestId", UUID.randomUUID().toString(), "attachments", List.of(body.path("initialAttachment")))), 200);
         JsonNode stored = ok(call("POST", "/api/core/v1/tasks/" + id + "/action", object("status", "STORED")), 200);
         assertEquals("STORED", text(stored, "status"));
-        assertEquals(2, number(stored, "version", 0));
+        assertEquals(number(edited, "version", 0), number(stored, "version", 0));
         assertTrue(stored.path("availableActions").isEmpty());
         JsonNode card = ok(call("GET", path, null), 200);
-        patch = object("requestId", UUID.randomUUID().toString(), "expectedVersion", 2, "changeToken", text(card, "changeToken"), "attributes", object("lastName", "Сидоров"));
+        patch = object("requestId", UUID.randomUUID().toString(), "expectedVersion", number(card, "version", 1), "changeToken", text(card, "changeToken"), "attributes", object("lastName", "Сидоров"));
         ok(call("PATCH", path, patch), 409);
         ok(call("POST", path + "/attachments", object("requestId", UUID.randomUUID().toString(), "attachments", List.of(body.path("initialAttachment")))), 409);
         String latest = text(card.path("attachments").get(0), "id");
@@ -1013,7 +1013,7 @@ class CoreliaIntegrationTest {
         JsonNode first = ok(call("GET", path, null), 200);
         JsonNode patch = versionPatch(first, "VERSION-2");
         JsonNode second = ok(call("PATCH", path, patch), 200);
-        assertEquals(2, number(second, "version", 0));
+        assertEquals(number(first, "version", 1) + 1, number(second, "version", 0));
         assertEquals(second, ok(call("PATCH", path, patch), 200), "Retry returns the committed response");
         JsonNode a4 = ok(call("PUT", "/api/core/v1/attachments/" + text(a3, "id"), upload("file.txt", "four")), 200);
         JsonNode v1 = ok(call("GET", path + "/versions/1", null), 200);

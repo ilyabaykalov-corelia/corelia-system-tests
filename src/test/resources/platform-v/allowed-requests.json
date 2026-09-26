@@ -130,7 +130,7 @@
   },
   {
     "name": "searchDocumentCommand",
-    "body": "query searchDocumentCommand($cond: String) { searchDocumentCommand(cond: $cond) { elems { commandKey requestHash response } count } }",
+    "body": "query searchDocumentCommand($cond: String) { searchDocumentCommand(cond: $cond) { elems { commandKey requestHash response history document { documentId } } count } }",
     "checkForAnyPrivilege": [
       "Document:read"
     ]
