@@ -54,6 +54,7 @@ class DockerSmokeTest {
                                 "POST",
                                 "/api/core/v1/documents/PDS_CONTRACT",
                                 object(
+                                        "requestId", UUID.randomUUID().toString(),
                                         "attributes",
                                         object(
                                                 "contractDate",
