@@ -75,6 +75,15 @@
     ]
   },
   {
+    "name": "migrateAttachmentStorageReference",
+    "body": "mutation migrateAttachmentStorageReference($id: ID!, $storageReference: String!) { packet { updateAttachment(input: { id: $id, storageReference: $storageReference }) { id attachmentId logicalAttachmentId documentId fileName contentType size storageReference version current uploadedAt } } }",
+    "allowEmptyChecks": false,
+    "disableJwtVerification": false,
+    "checkForAnyPrivilege": [
+      "Attachment:migrate"
+    ]
+  },
+  {
     "name": "replaceAttachmentVersion",
     "body": "mutation replaceAttachmentVersion($currentAttachmentId: ID!, $input: _CreateAttachmentInput!) { packet { updateAttachment(input: { id: $currentAttachmentId, current: false }) { id attachmentId logicalAttachmentId documentId version current } createAttachment(input: $input) { id attachmentId logicalAttachmentId documentId fileName contentType size storageReference version current uploadedAt } } }",
     "allowEmptyChecks": false,

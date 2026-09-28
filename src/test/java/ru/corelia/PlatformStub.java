@@ -573,6 +573,11 @@ final class PlatformStub implements AutoCloseable {
             created.put("id", id);
             attachments.put(id, created);
             result = object("packet", object("createAttachment", created));
+        } else if (query.startsWith("mutation migrateAttachmentStorageReference")) {
+            ObjectNode attachment = attachments.get(text(variables, "id"));
+            if (attachment == null) throw new IllegalArgumentException("Вложение для migration не найдено");
+            attachment.put("storageReference", text(variables, "storageReference"));
+            result = object("packet", object("updateAttachment", attachment));
         } else if (query.startsWith("mutation deleteAttachment")) {
             attachments.remove(text(variables, "id"));
             result = object("packet", object("deleteAttachment", text(variables, "id")));

@@ -141,6 +141,27 @@ class PlatformVProviderContractTest extends ProviderContractTest {
         assertTrue(request.json().path("payload").path("createdAt").asString().matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}"));
     }
 
+    @Test void migratesHistoricalAttachmentReferenceThroughConfiguredOperation() {
+        platform.reset();
+        platform.attachments.put("model-attachment-1", object(
+                "id", "model-attachment-1", "attachmentId", "attachment-1", "logicalAttachmentId", "attachment-1",
+                "documentId", "doc-1", "fileName", "old.txt", "contentType", "text/plain", "size", 3,
+                "storageReference", "platform-v-dam:old", "version", 1, "current", true,
+                "uploadedAt", "2026-09-01T10:00:00Z"));
+        var oldReference = new StorageReference("platform-v-dam:old");
+        var replacement = new StorageReference("corelia-blob://00000000-0000-0000-0000-000000000001");
+        fixture.platformAttachments().replaceStorageReference(
+                new AttachmentMetadata("attachment-1", "attachment-1", "doc-1", "old.txt", "text/plain", 3,
+                        1, true, Instant.parse("2026-09-01T10:00:00Z"), oldReference),
+                oldReference, replacement, fixture.allowedAuth());
+
+        assertEquals(replacement.value(), platform.attachments.get("model-attachment-1").path("storageReference").asString());
+        var request = platform.calls.stream().filter(call -> call.path().equals("/graphql"))
+                .filter(call -> call.json().path("query").asString().startsWith("mutation migrateAttachmentStorageReference"))
+                .findFirst().orElseThrow();
+        assertEquals("model-attachment-1", request.json().path("variables").path("id").asString());
+    }
+
     @Test void rejectsCreationBeforeConfiguredDocumentTypeIsPublished() {
         platform.missingDocumentType = true;
 
@@ -201,6 +222,7 @@ class PlatformVProviderContractTest extends ProviderContractTest {
         public ru.corelia.provider.DocumentTypeProvider documentTypes() { return types; }
         public ru.corelia.provider.BinaryStorage storage() { return storage; }
         public ru.corelia.provider.AttachmentCatalog attachments() { return attachments; }
+        public PlatformAttachmentCatalog platformAttachments() { return attachments; }
         public ru.corelia.provider.WorkflowProvider workflows() { return workflows; }
         public ru.corelia.provider.TaskProvider tasks() { return tasks; }
         public ru.corelia.provider.PermissionProvider permissions() { return permissions; }
