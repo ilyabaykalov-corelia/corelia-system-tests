@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import ru.corelia.auth.AuthContext;
 import ru.corelia.configuration.DocumentTypeCatalog;
 import ru.corelia.documents.*;
+import ru.corelia.http.ApiException;
 import ru.corelia.provider.DocumentStore;
 import ru.corelia.provider.DocumentVersionStore;
 import ru.corelia.provider.model.*;
@@ -19,6 +20,26 @@ import tools.jackson.databind.JsonNode;
 
 /** Разные реквизиты проходят один алгоритм версионирования через canonical SPI. */
 class DocumentVersionServiceTest {
+    @Test
+    void workflowCommandCommitsOnlyConfiguredStatusTransition() {
+        var versions = mock(DocumentVersionStore.class); var documents = mock(DocumentStore.class); var policy = mock(DocumentPolicy.class); var auth = mock(AuthContext.class); var types = mock(DocumentTypeCatalog.class);
+        var definition = mock(ru.corelia.configuration.DocumentTypeDefinition.class);
+        when(policy.type()).thenReturn("PDS_CONTRACT"); when(policy.schemaVersion()).thenReturn(1); when(auth.login()).thenReturn("operator");
+        when(types.definition("PDS_CONTRACT")).thenReturn(definition);
+        when(definition.workflow()).thenReturn(object("commands", object("takeInWork", object("from", List.of("CREATED"), "to", "IN_WORK"))));
+        when(types.name("PDS_CONTRACT")).thenReturn("Договор"); when(types.label("PDS_CONTRACT", "IN_WORK")).thenReturn("В работе"); when(types.tone("PDS_CONTRACT", "IN_WORK")).thenReturn("info");
+        var snapshot = new DocumentSnapshot("doc-1", "PDS_CONTRACT", "CREATED", 1, Map.of(), "creator", Instant.EPOCH, "token-1");
+        var current = new DocumentVersion("v1", "doc-1", 1, 1, Map.of("number", parse("\"42\"")), "CREATED", Instant.EPOCH, "creator", null, List.of());
+        when(documents.get("PDS_CONTRACT", "doc-1", auth)).thenReturn(snapshot);
+        when(versions.state("PDS_CONTRACT", "doc-1", auth)).thenReturn(new DocumentVersionState(snapshot, current, List.of(current), List.of()));
+        var service = new DocumentVersionService(versions, documents, List.of(policy), types);
+        JsonNode response = service.workflowCommand("PDS_CONTRACT", "doc-1", "takeInWork", object("requestId", UUID.randomUUID().toString(), "expectedVersion", 1, "changeToken", "token-1"), auth);
+        var mutation = org.mockito.ArgumentCaptor.forClass(DocumentMutation.class); verify(versions).commit(mutation.capture(), eq(auth));
+        assertEquals("IN_WORK", mutation.getValue().status()); assertEquals("IN_WORK", mutation.getValue().createdVersion().status());
+        assertEquals(2, mutation.getValue().createdVersion().number()); assertEquals("IN_WORK", text(response, "status"));
+        assertThrows(ApiException.class, () -> service.workflowCommand("PDS_CONTRACT", "doc-1", "approve", object("requestId", UUID.randomUUID().toString(), "expectedVersion", 1, "changeToken", "token-1"), auth));
+    }
+
     @Test
     void historyReturnsRecordedFileEventWithoutCreatingDocumentVersion() {
         var versions = mock(DocumentVersionStore.class); var documents = mock(DocumentStore.class); var policy = mock(DocumentPolicy.class); var auth = mock(AuthContext.class); var types = mock(DocumentTypeCatalog.class);
