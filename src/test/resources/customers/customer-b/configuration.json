@@ -3,6 +3,20 @@
     "corelia": ">=0.1.0 <1.0.0"
   },
   "schemaVersion": 2,
+  "permissionGrants": {
+    "Fixture:create": [
+      "fixture_editor"
+    ],
+    "Fixture:edit": [
+      "fixture_editor"
+    ],
+    "workflow-definition:edit": [
+      "fixture_editor"
+    ],
+    "workflow-definition:publish": [
+      "fixture_editor"
+    ]
+  },
   "sources": {
     "entities": "data-model/entities",
     "operations": "operations",

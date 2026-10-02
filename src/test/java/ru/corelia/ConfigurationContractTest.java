@@ -5,7 +5,7 @@ import static org.mockito.Mockito.*;
 import static ru.corelia.support.Json.*;
 import org.junit.jupiter.api.Test;
 import ru.corelia.configuration.*;
-import ru.corelia.platformv.PlatformVPermissionChecker;
+import ru.corelia.providernativepermissions.NativePermissionProvider;
 import ru.corelia.platformv.PlatformVDocumentBindings;
 import ru.corelia.platformv.PlatformVOperationCatalog;
 import ru.corelia.platformv.DocumentProjection;
@@ -26,17 +26,14 @@ class ConfigurationContractTest {
     private ConfigurationLoader.LoadedConfiguration load(String customer) {
         return new ConfigurationLoader().load(Path.of("src/test/resources/customers", customer), "0.1.0");
     }
-    @Test void platformPermissionsAndConfiguredAssignmentAreBothRequired() throws Exception {
+    @Test void nativePermissionsAndConfiguredAssignmentAreBothRequired() throws Exception {
         var config = load("customer-a");
-        String source = java.nio.file.Files.readString(Path.of("src/test/resources/customers/customer-a/platform-v-ac.json"));
-        var permissions = PlatformVPermissionChecker.fromText(source, config);
+        var permissions = new NativePermissionProvider(config);
         var editor = new AuthContext("token", "id", "alice", "Alice", "", List.of("fixture_editor"), "alice");
         var stranger = new AuthContext("token", "id", "alice", "Alice", "", List.of("document_operator"), "alice");
         assertDoesNotThrow(() -> permissions.require("Fixture:create", editor));
         assertEquals(403, assertThrows(ApiException.class, () -> permissions.require("Fixture:create", stranger)).status());
-        assertThrows(ConfigurationException.class, () -> PlatformVPermissionChecker.fromText(source.replace("Fixture:edit", "Fixture:other"), config));
-        assertThrows(ConfigurationException.class, () -> PlatformVPermissionChecker.fromText(source.replace("fixture_editor", "other_role"), config));
-        assertThrows(ConfigurationException.class, () -> PlatformVPermissionChecker.fromText("{invalid", config));
+        assertThrows(ConfigurationException.class, () -> permissions.require("missing", editor));
         var services = mock(ServiceClient.class);
         when(services.call(eq("workflow"), anyString(), eq("GET"), isNull(), eq(editor)))
             .thenReturn(object("executor", object("login", "alice", "role", "fixture_editor")));
@@ -52,7 +49,7 @@ class ConfigurationContractTest {
     }
     @Test void deniedCreationDoesNotStageFilesOrStartProcesses() throws Exception {
         var config = load("customer-a");
-        var permissions = PlatformVPermissionChecker.fromText(java.nio.file.Files.readString(Path.of("src/test/resources/customers/customer-a/platform-v-ac.json")), config);
+        var permissions = new NativePermissionProvider(config);
         var services = mock(ServiceClient.class);
         var repository = mock(DocumentStore.class);
         var versions = mock(DocumentVersionService.class);

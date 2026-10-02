@@ -28,7 +28,7 @@ class DockerSmokeTest {
     void runsFiveContainersAgainstPlatformStub() throws Exception {
         org.junit.jupiter.api.Assumptions.assumeTrue(Boolean.getBoolean("dockerSmoke"));
         try (var platform = new PlatformStub()) {
-            prepareOverlay(platform, root.resolve("../sber-npf-platform-v/ac.json").normalize());
+            prepareOverlay(platform);
             try {
                 command("up", "--no-build", "--wait", "--wait-timeout", "240");
                 String address = command("port", "corelia-gateway", "7170").trim();
@@ -102,7 +102,7 @@ class DockerSmokeTest {
             customerPackage = prepareCatalogFixture(customer);
             token = null;
             try (var platform = new PlatformStub()) {
-                prepareOverlay(platform, customerPackage.resolve("platform-v-ac.json"));
+                prepareOverlay(platform);
                 try {
                     command("up", "--no-build", "--wait", "--wait-timeout", "240");
                     Set<String> currentImages = new TreeSet<>(command("images", "--quiet").lines().filter(line -> !line.isBlank()).toList());
@@ -151,7 +151,6 @@ class DockerSmokeTest {
         }
         var config = copy(parse(Files.readString(fixture.resolve("configuration.json"))));
         Files.writeString(output.resolve("configuration.json"), write(config));
-        Files.copy(fixture.resolve("platform-v-ac.json"), output.resolve("platform-v-ac.json"), StandardCopyOption.REPLACE_EXISTING);
         return output;
     }
 
@@ -172,7 +171,7 @@ class DockerSmokeTest {
         Files.createDirectories(directory);
     }
 
-    private void prepareOverlay(PlatformStub platform, Path accessControl) throws Exception {
+    private void prepareOverlay(PlatformStub platform) throws Exception {
             String dockerBase = platform.base().replace("127.0.0.1", "host.docker.internal");
             StringBuilder yaml = new StringBuilder("services:\n");
             for (String service :
@@ -183,7 +182,7 @@ class DockerSmokeTest {
                             "attachment-service")) {
                 yaml.append("  corelia-")
                         .append(service)
-                        .append(":\n    container_name: corelia-smoke-").append(service).append("\n    volumes:\n      - ").append(accessControl).append(":/etc/corelia/platform-v-ac.json:ro\n    environment:\n      CORELIA_PLATFORM_V_AC_PATH: /etc/corelia/platform-v-ac.json\n")
+                        .append(":\n    container_name: corelia-smoke-").append(service).append("\n    environment:\n")
                         .append("      PLATFORM_V_KEYCLOAK_BASE_URL: ")
                         .append(dockerBase)
                         .append("/realm\n")

@@ -72,7 +72,6 @@ class CoreliaIntegrationTest {
                         List.of(
                                 "--spring.config.name=corelia-test",
                                 "--CORELIA_CONFIG_PATH=" + root.resolve("../sber-npf-corelia-config").normalize(),
-                                "--CORELIA_PLATFORM_V_AC_PATH=" + root.resolve("../sber-npf-platform-v/ac.json").normalize(),
                                 "--server.port=0",
                                 "--management.server.port=0",
                                 "--management.endpoints.web.exposure.include=health,prometheus",

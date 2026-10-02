@@ -10,7 +10,6 @@ import static org.mockito.Mockito.when;
 import static ru.corelia.support.Json.object;
 import static ru.corelia.support.Json.write;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
@@ -39,7 +38,6 @@ import ru.corelia.platformv.PlatformTaskProvider;
 import ru.corelia.platformv.PlatformVConfig;
 import ru.corelia.platformv.PlatformVDocumentBindings;
 import ru.corelia.platformv.PlatformVOperationCatalog;
-import ru.corelia.platformv.PlatformVPermissionChecker;
 import ru.corelia.platformv.PlatformWorkflowProvider;
 import ru.corelia.http.ApiException;
 import ru.corelia.provider.tck.ProviderContractTest;
@@ -182,7 +180,7 @@ class PlatformVProviderContractTest extends ProviderContractTest {
         private final PlatformAttachmentCatalog attachments;
         private final PlatformWorkflowProvider workflows;
         private final PlatformTaskProvider tasks;
-        private final PlatformVPermissionChecker permissions;
+        private final ru.corelia.provider.PermissionProvider permissions;
         private final AuthContext allowed = new AuthContext("Bearer test", "id", "operator", "Operator", "", List.of("document_operator"), "operator");
         private final AuthContext denied = new AuthContext("Bearer denied", "denied", "denied", "Denied", "", List.of(), "denied");
 
@@ -214,7 +212,9 @@ class PlatformVProviderContractTest extends ProviderContractTest {
             var bpm = new BpmClient(config, http);
             workflows = new PlatformWorkflowProvider(bpm, data, config, catalog, bindings);
             tasks = new PlatformTaskProvider(bpm, new ParallelCalls(), catalog, new UserCache(), config, data);
-            permissions = PlatformVPermissionChecker.fromText(Files.readString(root.resolve("../sber-npf-platform-v/ac.json")), loaded);
+            permissions = (permission, auth) -> {
+                if (auth.roles().isEmpty()) throw new ApiException(403, "Недостаточно прав для выполнения действия");
+            };
         }
         public Data data() { return new Data("PDS_CONTRACT", "doc-1", "token-1", "task-1", "contractNumber", "DocumentVersion:commit"); }
         public ru.corelia.provider.DocumentStore documents() { return documents; }
