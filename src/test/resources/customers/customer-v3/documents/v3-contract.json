@@ -1,0 +1,41 @@
+{
+  "id": "V3_CONTRACT",
+  "title": "V3 contract",
+  "schemaVersion": 1,
+  "attributes": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["number"],
+    "properties": {
+      "number": {"type": "string", "minLength": 1, "title": "Number"},
+      "amount": {"type": "number", "min": 0, "title": "Amount"}
+    }
+  },
+  "presentation": {
+    "statuses": {"CREATED": "Created"},
+    "aliases": {},
+    "tones": {},
+    "initialStatus": "CREATED"
+  },
+  "ui": {
+    "createForm": {"fields": ["number", "amount"], "label": "Create"},
+    "viewCard": {"fields": ["number"], "label": "View"},
+    "editCard": {"fields": ["number", "amount"], "label": "Edit"},
+    "table": {"columns": [{"field": "number", "label": "Contract number"}]},
+    "sections": [],
+    "tabs": []
+  },
+  "search": {
+    "filterableFields": ["number"],
+    "sortableFields": ["number"],
+    "indexHints": ["number"]
+  },
+  "attachments": {
+    "enabled": true,
+    "initialRequired": false,
+    "maxCount": 3,
+    "maxSizeBytes": 2048,
+    "allowedExtensions": ["pdf"],
+    "allowedMimeTypes": ["application/pdf"]
+  }
+}

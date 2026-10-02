@@ -47,6 +47,19 @@ class ConfigurationContractTest {
         document.put("status", "CLOSED");
         assertEquals(409, assertThrows(ApiException.class, () -> policy.authorize(document, "edit", editor)).status());
     }
+    @Test void v3PackageProvidesNativeDataWorkflowPermissionAndUiContracts() {
+        var loaded = load("customer-v3");
+        var type = loaded.documentTypes().require("V3_CONTRACT");
+        assertDoesNotThrow(() -> type.validate(object("number", "C-1", "amount", 1), false));
+        assertEquals("number", type.ui().path("createForm").path("fields").get(0).asString());
+        assertEquals("Contract number", type.ui().path("table").path("columns").get(0).path("label").asString());
+        assertEquals("application/pdf", type.attachments().path("allowedMimeTypes").get(0).asString());
+        assertEquals("v3_contract_process", loaded.providerBindings().get("V3_CONTRACT")
+                .path("workflow").path("flowable").path("definitionKey").asString());
+        var permissions = new NativePermissionProvider(loaded);
+        var editor = new AuthContext("token", "id", "editor", "Editor", "", List.of("v3_editor"), "editor");
+        assertDoesNotThrow(() -> permissions.require("document:V3_CONTRACT:create", editor));
+    }
     @Test void deniedCreationDoesNotStageFilesOrStartProcesses() throws Exception {
         var config = load("customer-a");
         var permissions = new NativePermissionProvider(config);
