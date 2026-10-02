@@ -33,10 +33,12 @@ class CoreliaIntegrationTest {
     private final Map<String, String> addresses = new HashMap<>();
     private final java.nio.file.Path root =
             java.nio.file.Path.of("..").toAbsolutePath().normalize();
+    private java.nio.file.Path configuration;
 
     @BeforeAll
     void start() throws Exception {
         platform = new PlatformStub();
+        configuration = nativePermissionsConfiguration();
         startService(
                 ru.corelia.workflow.WorkflowApplication.class,
                 "corelia-workflow-service",
@@ -71,7 +73,8 @@ class CoreliaIntegrationTest {
                 new ArrayList<>(
                         List.of(
                                 "--spring.config.name=corelia-test",
-                                "--CORELIA_CONFIG_PATH=" + root.resolve("../sber-npf-corelia-config").normalize(),
+                                "--CORELIA_CONFIG_PATH=" + configuration,
+                                "--corelia.provider.permissions=native-permissions",
                                 "--server.port=0",
                                 "--management.server.port=0",
                                 "--management.endpoints.web.exposure.include=health,prometheus",
@@ -119,6 +122,37 @@ class CoreliaIntegrationTest {
                         + "://localhost:"
                         + context.getWebServer().getPort());
         return context;
+    }
+
+    private java.nio.file.Path nativePermissionsConfiguration() throws Exception {
+        java.nio.file.Path source = root.resolve("../sber-npf-corelia-config").normalize();
+        java.nio.file.Path output = root.resolve("corelia-system-tests/target/native-permissions-config");
+        if (java.nio.file.Files.exists(output)) try (var files = java.nio.file.Files.walk(output)) {
+            for (var file : files.sorted(Comparator.reverseOrder()).toList()) java.nio.file.Files.delete(file);
+        }
+        try (var files = java.nio.file.Files.walk(source)) {
+            for (var file : files.toList()) {
+                var target = output.resolve(source.relativize(file));
+                if (java.nio.file.Files.isDirectory(file)) java.nio.file.Files.createDirectories(target);
+                else java.nio.file.Files.copy(file, target);
+            }
+        }
+        var manifest = copy(parse(java.nio.file.Files.readString(output.resolve("configuration.json"))));
+        var grants = manifest.putObject("permissionGrants");
+        var catalog = new ru.corelia.configuration.ConfigurationLoader().load(output, "0.1.0");
+        for (var type : catalog.documentTypes().all()) {
+            var authorization = type.authorization();
+            for (String key : List.of("createPermission", "readPermission", "editPermission", "attachmentAddPermission")) {
+                String permission = text(authorization, key);
+                if (!permission.isEmpty()) grants.putArray(permission).add("document_operator");
+            }
+            for (String action : List.of("IN_WORK", "APPROVED", "REJECTED", "RETURNED", "take_on", "approve", "reject", "return_for_revision", "start"))
+                grants.putArray("workflow:" + type.id() + ":" + action).add("document_operator");
+        }
+        grants.putArray("workflow-definition:edit").add("document_operator");
+        grants.putArray("workflow-definition:publish").add("document_operator");
+        java.nio.file.Files.writeString(output.resolve("configuration.json"), write(manifest));
+        return output;
     }
 
     @BeforeEach
