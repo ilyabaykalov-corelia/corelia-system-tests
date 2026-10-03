@@ -23,6 +23,12 @@ import java.util.*;
 
 /** Независимые реестры документов и разные mapping для тестовых заказчиков. */
 class ConfigurationContractTest {
+    @Test void jsonObjectKeepsNestedJsonNode() {
+        var payload = object("attributes", object("number", "C-1", "amount", 1));
+        assertEquals("C-1", text(payload.path("attributes"), "number"));
+        assertEquals("C-1", text(parse(write(payload)).path("attributes"), "number"));
+    }
+
     private ConfigurationLoader.LoadedConfiguration load(String customer) {
         return new ConfigurationLoader().load(Path.of("src/test/resources/customers", customer), "0.1.0");
     }
@@ -71,6 +77,38 @@ class ConfigurationContractTest {
         var unauthorized = new AuthContext("token", "id", "alice", "Alice", "", List.of(), "alice");
         assertEquals(403, assertThrows(ApiException.class, () -> documentService.create("CONTRACT_X", object(), unauthorized)).status());
         verifyNoInteractions(services, repository, versions, versionRepository);
+    }
+    @Test void documentCreationPassesConfiguredAttributesToStore() {
+        var loaded = load("customer-v3");
+        var auth = new AuthContext("token", "id", "editor", "Editor", "", List.of("document_operator"), "editor");
+        var store = mock(DocumentStore.class);
+        var versions = mock(DocumentVersionStore.class);
+        var services = mock(ServiceClient.class);
+        when(services.call(eq("workflow"), anyString(), eq("POST"), any(), eq(auth))).thenReturn(object("id", "process"));
+        when(store.get(eq("V3_CONTRACT"), anyString(), eq(auth))).thenAnswer(call -> {
+            var id = call.getArgument(1, String.class);
+            return new DocumentSnapshot(id, "V3_CONTRACT", "CREATED", 1, Map.of("number", parse("\"C-1\""), "amount", parse("1")), "editor", java.time.Instant.now(), "token");
+        });
+        var service = new DocumentService(new NativePermissionProvider(loaded), new DocumentTypeCatalog(loaded), store, services, mock(DocumentVersionService.class), versions);
+        service.create("V3_CONTRACT", object("requestId", UUID.randomUUID().toString(), "attributes", object("number", "C-1", "amount", 1)), auth);
+        var creation = org.mockito.ArgumentCaptor.forClass(ru.corelia.provider.model.DocumentCreation.class);
+        verify(store).create(creation.capture(), eq(auth));
+        assertEquals("C-1", text(creation.getValue().attributes().get("number")));
+    }
+    @Test void readinessDoesNotRestartWorkflowForDocumentWithoutRequiredInitialAttachment() {
+        var loaded = load("customer-v3");
+        var auth = new AuthContext("token", "id", "editor", "Editor", "", List.of("document_operator"), "editor");
+        var store = mock(DocumentStore.class);
+        var services = mock(ServiceClient.class);
+        var versions = mock(DocumentVersionStore.class);
+        var service = new DocumentService(
+                new NativePermissionProvider(loaded), new DocumentTypeCatalog(loaded), store, services,
+                mock(DocumentVersionService.class), versions);
+
+        var result = service.startWorkflowWhenReady("V3_CONTRACT", "document-1", auth);
+
+        assertEquals("ALREADY_READY", text(result, "state"));
+        verifyNoInteractions(store, services, versions);
     }
     @Test void sberSchemaAcceptsValidDateAndInsuranceNumber() {
         var types = new DocumentTypeCatalog(new ConfigurationLoader().load(Path.of("../../sber-npf-corelia-config"), "0.1.0"));

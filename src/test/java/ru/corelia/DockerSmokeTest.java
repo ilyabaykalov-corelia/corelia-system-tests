@@ -13,6 +13,7 @@ import java.net.http.*;
 import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 /** Проверяет собранные образы на имитации платформы. Отдельный Compose-проект всегда удаляется. */
 class DockerSmokeTest {
@@ -27,12 +28,25 @@ class DockerSmokeTest {
     @Test
     void runsNativeV3ScenarioWithoutPlatformVCalls() throws Exception {
         org.junit.jupiter.api.Assumptions.assumeTrue(Boolean.getBoolean("dockerSmoke"));
+        Files.deleteIfExists(log);
         try (var platform = new PlatformStub()) {
             customerPackage = root.resolve("corelia-system-tests/src/test/resources/customers/customer-v3");
             prepareOverlay(platform);
             try {
-                command("up", "--no-build", "--wait", "--wait-timeout", "240");
-                String address = command("port", "corelia-gateway", "7170").trim();
+                try {
+                    command("up", "--no-build", "--wait", "--wait-timeout", "240");
+                } catch (AssertionError failure) {
+                    try {
+                        command("logs", "--no-color");
+                    } catch (AssertionError logFailure) {
+                        failure.addSuppressed(logFailure);
+                    }
+                    throw failure;
+                }
+                String address = command("port", "corelia-gateway", "7170").lines()
+                        .filter(line -> line.matches("[^\\s:]+:\\d+"))
+                        .reduce((first, second) -> second)
+                        .orElseThrow(() -> new IllegalStateException("Docker Compose не вернул адрес gateway"));
                 base = "http://" + address;
                 assertEquals(
                         "corelia-gateway", text(call("GET", "/api/core/v1/health", null, 200), "service"));
@@ -40,7 +54,7 @@ class DockerSmokeTest {
                 assertFalse(token.isEmpty());
                 assertEquals("operator", text(call("GET", "/api/core/v1/auth/me", null, 200), "login"));
                 assertEquals(
-                        1,
+                        0,
                         number(
                                 call(
                                         "POST",
@@ -49,15 +63,14 @@ class DockerSmokeTest {
                                         200),
                                 "total",
                                 0));
+                String creationRequestId = UUID.randomUUID().toString();
                 JsonNode created =
                         call(
                                 "POST",
                                 "/api/core/v1/documents/V3_CONTRACT",
                                 object(
-                                        "requestId", UUID.randomUUID().toString(),
-                                        "attributes",
-                                        object(
-                                                "number", "DOCKER-1", "amount", 1)),
+                                        "requestId", creationRequestId,
+                                        "attributes", object("number", "DOCKER-1", "amount", 1)),
                                 201);
                 assertFalse(text(created, "processInstanceId").isEmpty());
                 var files =
@@ -76,23 +89,36 @@ class DockerSmokeTest {
                                 201);
                 String id = text(files.get(0), "id");
                 assertFalse(id.isEmpty());
+                JsonNode currentAttachments = call(
+                        "GET",
+                        "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id") + "/attachments",
+                        null,
+                        200);
+                assertEquals(id, text(currentAttachments.get(0), "id"));
                 assertArrayEquals("test".getBytes(java.nio.charset.StandardCharsets.UTF_8), bytes("/api/core/v1/attachments/" + id));
+                JsonNode workflow = call("GET", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id") + "/workflow", null, 200);
+                String taskId = text(workflow.path("task"), "id");
+                assertFalse(taskId.isEmpty());
+                call("POST", "/api/core/v1/tasks/" + taskId + "/start", object(), 200);
                 JsonNode card = call("GET", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id"), null, 200);
                 call("PATCH", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id"),
                         object("attributes", object("number", "DOCKER-2", "amount", 2),
                                 "expectedVersion", number(card, "version", 0),
                                 "changeToken", text(card, "changeToken"), "requestId", UUID.randomUUID().toString()), 200);
-                assertFalse(list(call("GET", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id") + "/history", null, 200)).isEmpty());
-                JsonNode workflow = call("GET", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id") + "/workflow", null, 200);
-                String taskId = text(workflow.path("task"), "id");
-                assertFalse(taskId.isEmpty());
-                call("POST", "/api/core/v1/tasks/" + taskId + "/start", object(), 200);
+                assertFalse(list(call("GET", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id") + "/history", null, 200).path("items")).isEmpty());
                 call("POST", "/api/core/v1/tasks/" + taskId + "/action", object("actionCode", "approve"), 200);
                 assertEquals(1, number(call("POST", "/api/core/v1/documents/V3_CONTRACT/search", object(), 200), "total", 0));
                 assertTrue(platform.calls.stream().noneMatch(value -> value.path().startsWith("/graphql")
                         || value.path().startsWith("/bpmx") || value.path().startsWith("/bpmu") || value.path().startsWith("/dam")));
+            } catch (AssertionError failure) {
+                try {
+                    command("logs", "--no-color");
+                } catch (AssertionError logFailure) {
+                    failure.addSuppressed(logFailure);
+                }
+                throw failure;
             } finally {
-                command("down", "--remove-orphans");
+                command("down", "--volumes", "--remove-orphans");
             }
         }
     }
@@ -190,7 +216,15 @@ class DockerSmokeTest {
                         ports: !override []
                       corelia-data-service:
                         container_name: corelia-smoke-data-service
+                        image: corelia-smoke/data-service:test
                     """);
+            yaml.append("    environment:\n")
+                    .append("      CORELIA_AUTH_ISSUER: ")
+                    .append(platform.base())
+                    .append("/realm\n")
+                    .append("      CORELIA_AUTH_JWKS_URL: ")
+                    .append(dockerBase)
+                    .append("/certs\n");
             for (String service :
                     List.of(
                             "gateway",
@@ -199,13 +233,20 @@ class DockerSmokeTest {
                             "attachment-service")) {
                 yaml.append("  corelia-")
                         .append(service)
-                        .append(":\n    container_name: corelia-smoke-").append(service).append("\n    environment:\n")
+                        .append(":\n    container_name: corelia-smoke-").append(service)
+                        .append("\n    image: corelia-smoke/").append(service).append(":test\n    environment:\n")
                         .append("      PLATFORM_V_KEYCLOAK_BASE_URL: ")
                         .append(dockerBase)
                         .append("/realm\n")
                         .append("      PLATFORM_V_KEYCLOAK_ISSUER: ")
                         .append(platform.base())
                         .append("/realm\n")
+                        .append("      CORELIA_AUTH_ISSUER: ")
+                        .append(platform.base())
+                        .append("/realm\n")
+                        .append("      CORELIA_AUTH_JWKS_URL: ")
+                        .append(dockerBase)
+                        .append("/certs\n")
                         .append("      PLATFORM_V_DATASPACE_GRAPHQL_URL: ")
                         .append(dockerBase)
                         .append("/graphql\n")
@@ -232,8 +273,26 @@ class DockerSmokeTest {
                                     + "      CORELIA_FLOWABLE_DATABASE_SCHEMA_UPDATE: 'true'\n"
                                     + "      CORELIA_WORKFLOW_LEGACY_PLATFORM_V_ENABLED: 'false'\n"
                                     + "      REDIS_URL: ''\n");
+                String capabilities = switch (service) {
+                    case "gateway" -> "permissions";
+                    case "document-service" -> "documents,document-versions,document-types,attachments,permissions";
+                    case "workflow-service" -> "documents,workflow,tasks,permissions";
+                    case "attachment-service" -> "attachments,binary-storage,permissions";
+                    default -> throw new IllegalArgumentException("Неизвестный сервис: " + service);
+                };
+                yaml.append("      CORELIA_PROVIDER_CAPABILITIES: ").append(capabilities).append("\n");
+                if (service.equals("attachment-service"))
+                    yaml.append("      CORELIA_PROVIDER_BINARY_STORAGE: s3\n");
                 if (service.equals("gateway"))
                     yaml.append("    ports: !override [\"127.0.0.1:0:7170\"]\n");
+                String providers = switch (service) {
+                    case "gateway" -> "corelia-provider-native-permissions";
+                    case "document-service" -> "corelia-provider-native-data,corelia-provider-native-permissions";
+                    case "workflow-service" -> "corelia-provider-flowable,corelia-provider-native-data,corelia-provider-native-permissions";
+                    case "attachment-service" -> "corelia-provider-s3,corelia-provider-native-data,corelia-provider-native-permissions";
+                    default -> throw new IllegalArgumentException("Неизвестный сервис: " + service);
+                };
+                yaml.append("    build:\n      args:\n        PROVIDER_MODULES: ").append(providers).append("\n");
             }
             Files.writeString(overlay, yaml);
     }
@@ -289,11 +348,16 @@ class DockerSmokeTest {
             id.waitFor();
             builder.environment().put(field.equals("u") ? "CORELIA_UID" : "CORELIA_GID", value);
         }
+        builder.redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile()));
         Process process = builder.start();
-        String output = new String(process.getInputStream().readAllBytes());
-        int exit = process.waitFor();
-        Files.writeString(log, output, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-        assertEquals(0, exit, output);
-        return output;
+        boolean finished = process.waitFor(15, TimeUnit.MINUTES);
+        if (!finished) {
+            process.destroyForcibly();
+            process.waitFor();
+        }
+        String commandOutput = Files.readString(log);
+        assertTrue(finished, "Команда Docker Compose превысила лимит 15 минут: " + String.join(" ", command));
+        assertEquals(0, process.exitValue(), commandOutput);
+        return commandOutput;
     }
 }

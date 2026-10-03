@@ -72,7 +72,7 @@ final class PlatformStub implements AutoCloseable {
         var generator = KeyPairGenerator.getInstance("RSA");
         generator.initialize(2048);
         keyPair = generator.generateKeyPair();
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server = HttpServer.create(new InetSocketAddress(0), 0);
         server.setExecutor(executor);
         server.createContext("/", this::handle);
         server.start();
