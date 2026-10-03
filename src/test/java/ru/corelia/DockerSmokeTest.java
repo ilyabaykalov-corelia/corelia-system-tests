@@ -15,7 +15,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
-/** Проверяет собранные образы на имитации платформы. Отдельный Compose-проект всегда удаляется. */
+/** Проверяет собранные образы с независимым тестовым OIDC issuer. Отдельный Compose-проект всегда удаляется. */
 class DockerSmokeTest {
     private final Path root = Path.of("..").toAbsolutePath().normalize();
     private final Path overlay = root.resolve("corelia-system-tests/target/docker-smoke.yaml");
@@ -26,12 +26,12 @@ class DockerSmokeTest {
     private Path customerPackage = root.resolve("../sber-npf-corelia-config").normalize();
 
     @Test
-    void runsNativeV3ScenarioWithoutPlatformVCalls() throws Exception {
+    void runsNativeV3ScenarioWithoutExternalProviderCalls() throws Exception {
         org.junit.jupiter.api.Assumptions.assumeTrue(Boolean.getBoolean("dockerSmoke"));
         Files.deleteIfExists(log);
-        try (var platform = new PlatformStub()) {
+        try (var auth = new AuthStub()) {
             customerPackage = root.resolve("corelia-system-tests/src/test/resources/customers/customer-v3");
-            prepareOverlay(platform);
+            prepareOverlay(auth);
             try {
                 try {
                     command("up", "--no-build", "--wait", "--wait-timeout", "240");
@@ -50,7 +50,7 @@ class DockerSmokeTest {
                 base = "http://" + address;
                 assertEquals(
                         "corelia-gateway", text(call("GET", "/api/core/v1/health", null, 200), "service"));
-                token = platform.token("operator");
+                token = auth.token("operator");
                 assertFalse(token.isEmpty());
                 assertEquals("operator", text(call("GET", "/api/core/v1/auth/me", null, 200), "login"));
                 assertEquals(
@@ -223,8 +223,6 @@ class DockerSmokeTest {
                 assertArrayEquals(
                         "test-2".getBytes(java.nio.charset.StandardCharsets.UTF_8),
                         bytes("/api/core/v1/attachments/" + replacementId));
-                assertTrue(platform.calls.stream().noneMatch(value -> value.path().startsWith("/graphql")
-                        || value.path().startsWith("/bpmx") || value.path().startsWith("/bpmu") || value.path().startsWith("/dam")));
             } catch (AssertionError failure) {
                 try {
                     command("logs", "--no-color");
@@ -238,87 +236,8 @@ class DockerSmokeTest {
         }
     }
 
-    /** Startup/catalog proof only: fixture model/transactions still need real Platform V acceptance. */
-    @org.junit.jupiter.api.Disabled("V2 Platform V compatibility scenario удалён из PHASE 11 native suite")
-    @Test
-    void sameImagesLoadTwoExternalCatalogsWithoutRebuilding() throws Exception {
-        org.junit.jupiter.api.Assumptions.assumeTrue(Boolean.getBoolean("dockerSmoke"));
-        Set<String> imageIds = null;
-        for (String customer : List.of("customer-a", "customer-b")) {
-            customerPackage = prepareCatalogFixture(customer);
-            token = null;
-            try (var platform = new PlatformStub()) {
-                prepareOverlay(platform);
-                try {
-                    command("up", "--no-build", "--wait", "--wait-timeout", "240");
-                    Set<String> currentImages = new TreeSet<>(command("images", "--quiet").lines().filter(line -> !line.isBlank()).toList());
-                    assertEquals(4, currentImages.size());
-                    if (imageIds == null) imageIds = currentImages;
-                    else assertEquals(imageIds, currentImages, "Customer switch must not rebuild or replace images");
-                    base = "http://" + command("port", "corelia-gateway", "7170").trim();
-                    token = platform.token("operator");
-                    var catalog = call("GET", "/api/core/v1/document-types", null, 200);
-                    assertEquals(customer.equals("customer-a") ? 2 : 5, number(catalog, "total", 0));
-                    for (JsonNode type : list(catalog.path("items"))) {
-                        assertTrue(text(type, "name").startsWith(customer));
-                        assertTrue(type.path("attachments").isObject());
-                        assertFalse(type.has("storage"));
-                        String code = text(type, "code");
-                        assertEquals(code, text(call("GET", "/api/core/v1/document-types/" + code, null, 200), "code"));
-                        // Signed default platform role is not granted fixture-specific creation permission.
-                        call("POST", "/api/core/v1/documents/" + code, object("attributes", object()), 403);
-                    }
-                    assertTrue(platform.calls.stream().noneMatch(call -> call.path().startsWith("/bpmx")));
-                } finally { command("down", "--remove-orphans"); }
-            }
-        }
-    }
-
-    private Path prepareCatalogFixture(String customer) throws Exception {
-        Path fixture = root.resolve("corelia-system-tests/src/test/resources/customers/" + customer);
-        Path output = root.resolve("corelia-system-tests/target/docker-catalog-" + customer);
-        recreateDirectory(output);
-        copyDirectory(fixture.resolve("data-model"), output.resolve("data-model"));
-        copyDirectory(fixture.resolve("ui"), output.resolve("ui"));
-        copyDirectory(fixture.resolve("permissions"), output.resolve("permissions"));
-        copyDirectory(fixture.resolve("operations"), output.resolve("operations"));
-        copyDirectory(fixture.resolve("graphql"), output.resolve("graphql"));
-        // Общие операции adapter-а добавляются к внешнему каталогу без legacy поля configuration.operations.
-        Path migration = root.resolve("../sber-npf-corelia-config");
-        for (String name : List.of("searchDocument", "searchDocumentVersion", "searchDocumentCommand", "searchAttachment", "initializeDocumentVersion", "commitDocumentNoChange", "commitDocumentFileUpload", "commitDocumentFileReplace", "commitDocumentFileDelete", "searchDocumentProcessSettings", "refDocumentTypeListGet")) {
-            Path operation = migration.resolve("operations").resolve(name.replaceAll("([a-z0-9])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT) + ".json");
-            Path copiedOperation = output.resolve("operations").resolve(operation.getFileName());
-            Files.copy(operation, copiedOperation, StandardCopyOption.REPLACE_EXISTING);
-            String graphql = text(parse(Files.readString(operation)), "file");
-            Path source = operation.getParent().resolve(graphql).normalize();
-            Path target = copiedOperation.getParent().resolve(graphql).normalize();
-            Files.createDirectories(target.getParent());
-            Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
-        }
-        var config = copy(parse(Files.readString(fixture.resolve("configuration.json"))));
-        Files.writeString(output.resolve("configuration.json"), write(config));
-        return output;
-    }
-
-    private static void copyDirectory(Path source, Path target) throws Exception {
-        try (var files = Files.walk(source)) {
-            for (Path file : files.toList()) {
-                Path relative = source.relativize(file), destination = target.resolve(relative);
-                if (Files.isDirectory(file)) Files.createDirectories(destination);
-                else Files.copy(file, destination, StandardCopyOption.REPLACE_EXISTING);
-            }
-        }
-    }
-
-    private static void recreateDirectory(Path directory) throws Exception {
-        if (Files.exists(directory)) try (var files = Files.walk(directory)) {
-            for (Path file : files.sorted(Comparator.reverseOrder()).toList()) Files.delete(file);
-        }
-        Files.createDirectories(directory);
-    }
-
-    private void prepareOverlay(PlatformStub platform) throws Exception {
-            String dockerBase = platform.base().replace("127.0.0.1", "host.docker.internal");
+    private void prepareOverlay(AuthStub auth) throws Exception {
+        String dockerBase = auth.base().replace("127.0.0.1", "host.docker.internal");
             StringBuilder yaml = new StringBuilder("""
                     services:
                       postgres:
@@ -335,7 +254,7 @@ class DockerSmokeTest {
                     """);
             yaml.append("    environment:\n")
                     .append("      CORELIA_AUTH_ISSUER: ")
-                    .append(platform.base())
+                    .append(auth.base())
                     .append("/realm\n")
                     .append("      CORELIA_AUTH_JWKS_URL: ")
                     .append(dockerBase)
@@ -350,34 +269,14 @@ class DockerSmokeTest {
                         .append(service)
                         .append(":\n    container_name: corelia-smoke-").append(service)
                         .append("\n    image: corelia-smoke/").append(service).append(":test\n    environment:\n")
-                        .append("      PLATFORM_V_KEYCLOAK_BASE_URL: ")
-                        .append(dockerBase)
-                        .append("/realm\n")
-                        .append("      PLATFORM_V_KEYCLOAK_ISSUER: ")
-                        .append(platform.base())
-                        .append("/realm\n")
                         .append("      CORELIA_AUTH_ISSUER: ")
-                        .append(platform.base())
+                        .append(auth.base())
                         .append("/realm\n")
                         .append("      CORELIA_AUTH_JWKS_URL: ")
                         .append(dockerBase)
                         .append("/certs\n")
-                        .append("      PLATFORM_V_DATASPACE_GRAPHQL_URL: ")
-                        .append(dockerBase)
-                        .append("/graphql\n")
-                        .append("      PLATFORM_V_BPMX_BASE_URL: ")
-                        .append(dockerBase)
-                        .append("/bpmx\n")
-                        .append("      PLATFORM_V_TASK_LIST_BASE_URL: ")
-                        .append(dockerBase)
-                        .append("/bpmu\n")
-                        .append("      PLATFORM_V_FILE_STORAGE_BASE_URL: ")
-                        .append(dockerBase)
-                        .append("/dam\n")
                         .append(
-                                "      PLATFORM_V_TENANT: tenant-test\n"
-                                    + "      PLATFORM_V_APP_INSTANCE_ID: app-test\n"
-                                    + "      CORELIA_PROVIDER_DOCUMENTS: native-data\n"
+                                "      CORELIA_PROVIDER_DOCUMENTS: native-data\n"
                                     + "      CORELIA_PROVIDER_DOCUMENT_VERSIONS: native-data\n"
                                     + "      CORELIA_PROVIDER_DOCUMENT_TYPES: native-data\n"
                                     + "      CORELIA_PROVIDER_ATTACHMENTS: native-data\n"
@@ -386,7 +285,6 @@ class DockerSmokeTest {
                                     + "      CORELIA_PROVIDER_WORKFLOW: flowable\n"
                                     + "      CORELIA_PROVIDER_TASKS: flowable\n"
                                     + "      CORELIA_FLOWABLE_DATABASE_SCHEMA_UPDATE: 'true'\n"
-                                    + "      CORELIA_WORKFLOW_LEGACY_PLATFORM_V_ENABLED: 'false'\n"
                                     + "      REDIS_URL: ''\n");
                 String capabilities = switch (service) {
                     case "gateway" -> "permissions";
@@ -410,6 +308,13 @@ class DockerSmokeTest {
                 yaml.append("    build:\n      args:\n        PROVIDER_MODULES: ").append(providers).append("\n");
             }
             Files.writeString(overlay, yaml);
+    }
+
+    private static void recreateDirectory(Path directory) throws Exception {
+        if (Files.exists(directory)) try (var files = Files.walk(directory)) {
+            for (Path file : files.sorted(Comparator.reverseOrder()).toList()) Files.delete(file);
+        }
+        Files.createDirectories(directory);
     }
 
     private JsonNode call(String method, String path, JsonNode body, int expected)

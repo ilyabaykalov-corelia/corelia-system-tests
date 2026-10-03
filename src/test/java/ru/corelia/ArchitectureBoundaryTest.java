@@ -8,7 +8,7 @@ import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/** Не допускает возврат Platform V деталей в нейтральные и business-модули. */
+/** Не допускает возврат provider-specific деталей в нейтральные и business-модули. */
 class ArchitectureBoundaryTest {
     private static final List<String> GENERIC_MODULES = List.of(
             "corelia-common", "corelia-configuration", "corelia-document-service",
@@ -17,7 +17,7 @@ class ArchitectureBoundaryTest {
             "Platform V", "DataSpace", "BPMX", "BPMU", "BpmClient", "FileStorageClient",
             "platform-v-dam", "GraphQL", "multiaggregate", "appInstanceId", "/system/v6/usertasks");
 
-    @Test void genericProductionSourceDoesNotKnowPlatformVProtocol() throws IOException {
+    @Test void genericProductionSourceDoesNotKnowRemovedProviderProtocol() throws IOException {
         Path root = Path.of("..").toRealPath();
         for (String module : GENERIC_MODULES) {
             Path source = root.resolve(module).resolve("src/main");
@@ -32,10 +32,9 @@ class ArchitectureBoundaryTest {
         }
     }
 
-    @Test void businessServicesDoNotDeclarePlatformVDependency() throws IOException {
+    @Test void buildDoesNotContainRemovedProviderModule() throws IOException {
         Path root = Path.of("..").toRealPath();
-        for (String module : List.of("corelia-document-service", "corelia-workflow-service", "corelia-attachment-service"))
-            assertFalse(Files.readString(root.resolve(module).resolve("pom.xml")).contains("corelia-platform-v"),
-                    () -> module + " не должен зависеть от Platform V implementation");
+        assertFalse(Files.readString(root.resolve("pom.xml")).contains("corelia-platform-v"));
+        assertFalse(Files.exists(root.resolve("corelia-platform-v")));
     }
 }

@@ -1,1 +1,0 @@
-query read0 { searchDocument { elems { id documentId documentType { id } details0 { id status caption checked } } count } }
