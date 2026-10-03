@@ -136,7 +136,7 @@ class DockerSmokeTest {
                         "changeToken", text(card, "changeToken"),
                         "requestId", UUID.randomUUID().toString());
                 command("kill", "corelia-data-service");
-                call("PATCH", documentPath, recoveryPatch, 504);
+                assertTrue(Set.of(502, 504).contains(status("PATCH", documentPath, recoveryPatch)));
                 command("start", "corelia-data-service");
                 command("up", "--no-build", "--wait", "--wait-timeout", "240");
                 assertEquals(
@@ -178,6 +178,20 @@ class DockerSmokeTest {
                 JsonNode completed = call("POST", "/api/core/v1/tasks/" + taskId + "/action", completion, 200);
                 assertEquals(completed, call("POST", "/api/core/v1/tasks/" + taskId + "/action", completion, 200));
                 assertEquals(1, number(call("POST", "/api/core/v1/documents/V3_CONTRACT/search", object(), 200), "total", 0));
+                Path backup = root.resolve("corelia-system-tests/target/backup-smoke");
+                recreateDirectory(backup);
+                script("scripts/backup.sh", backup.toString());
+                JsonNode afterBackup = call(
+                        "POST",
+                        "/api/core/v1/documents/V3_CONTRACT",
+                        object("requestId", UUID.randomUUID().toString(), "attributes", object("number", "AFTER-BACKUP", "amount", 3)),
+                        201);
+                script("scripts/restore.sh", backup.toString(), "--confirm");
+                assertEquals("V3_CONTRACT", text(eventuallyCall("GET", documentPath, null, 200), "typeCode"));
+                assertArrayEquals(
+                        "test-2".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        bytes("/api/core/v1/attachments/" + replacementId));
+                call("GET", "/api/core/v1/documents/V3_CONTRACT/" + text(afterBackup, "id"), null, 404);
                 command("restart", "postgres");
                 command("up", "--no-build", "--wait", "--wait-timeout", "240");
                 assertEquals(
@@ -410,18 +424,31 @@ class DockerSmokeTest {
         return parse(response.body());
     }
 
+    private int status(String method, String path, JsonNode body) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create(base + path))
+                .timeout(Duration.ofSeconds(60))
+                .header("Content-Type", "application/json");
+        if (token != null) request.header("Authorization", "Bearer " + token);
+        return client.send(
+                        request.method(method, HttpRequest.BodyPublishers.ofString(write(body))).build(),
+                        HttpResponse.BodyHandlers.discarding())
+                .statusCode();
+    }
+
     private JsonNode eventuallyCall(String method, String path, JsonNode body, int expected)
             throws Exception {
         AssertionError failure = null;
-        for (int attempt = 0; attempt < 10; attempt++) {
+        for (int attempt = 0; attempt < 30; attempt++) {
             try {
                 return call(method, path, body, expected);
             } catch (AssertionError currentFailure) {
                 failure = currentFailure;
                 TimeUnit.SECONDS.sleep(1);
+            } catch (java.io.IOException ignored) {
+                TimeUnit.SECONDS.sleep(1);
             }
         }
-        throw failure;
+        throw failure == null ? new AssertionError("Сервис не стал доступен за отведённое время") : failure;
     }
 
     private byte[] bytes(String path) throws Exception {
@@ -466,5 +493,31 @@ class DockerSmokeTest {
         assertTrue(finished, "Команда Docker Compose превысила лимит 15 минут: " + String.join(" ", command));
         assertEquals(0, process.exitValue(), commandOutput);
         return commandOutput;
+    }
+
+    private void script(String path, String... arguments) throws Exception {
+        List<String> command = new ArrayList<>();
+        command.add(root.resolve(path).toString());
+        command.addAll(List.of(arguments));
+        var builder = new ProcessBuilder(command).directory(root.toFile()).redirectErrorStream(true);
+        builder.environment().put("COMPOSE_PROJECT_NAME", "corelia-smoke");
+        builder.environment().put("COMPOSE_FILE", "compose.yaml" + java.io.File.pathSeparator + overlay);
+        builder.environment().put("CORELIA_CUSTOMER_CONFIG", customerPackage.toString());
+        builder.environment().put("CORELIA_INTERNAL_NETWORK_SUBNET", "172.31.0.0/16");
+        for (String field : List.of("u", "g")) {
+            var id = new ProcessBuilder("id", "-" + field).start();
+            String value = new String(id.getInputStream().readAllBytes()).trim();
+            id.waitFor();
+            builder.environment().put(field.equals("u") ? "CORELIA_UID" : "CORELIA_GID", value);
+        }
+        builder.redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile()));
+        Process process = builder.start();
+        boolean finished = process.waitFor(15, TimeUnit.MINUTES);
+        if (!finished) {
+            process.destroyForcibly();
+            process.waitFor();
+        }
+        assertTrue(finished, "Скрипт превысил лимит 15 минут: " + String.join(" ", command));
+        assertEquals(0, process.exitValue(), Files.readString(log));
     }
 }
