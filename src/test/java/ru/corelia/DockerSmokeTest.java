@@ -110,10 +110,19 @@ class DockerSmokeTest {
                 assertFalse(taskId.isEmpty());
                 call("POST", "/api/core/v1/tasks/" + taskId + "/start", object(), 200);
                 JsonNode card = call("GET", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id"), null, 200);
-                call("PATCH", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id"),
-                        object("attributes", object("number", "DOCKER-2", "amount", 2),
-                                "expectedVersion", number(card, "version", 0),
-                                "changeToken", text(card, "changeToken"), "requestId", UUID.randomUUID().toString()), 200);
+                String documentPath = "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id");
+                var concurrentEdits = List.of("DOCKER-2", "DOCKER-3").stream().map(requestedNumber -> {
+                    JsonNode body = object("attributes", object("number", requestedNumber, "amount", 2),
+                            "expectedVersion", number(card, "version", 0),
+                            "changeToken", text(card, "changeToken"), "requestId", UUID.randomUUID().toString());
+                    return client.sendAsync(HttpRequest.newBuilder(URI.create(base + documentPath))
+                            .timeout(Duration.ofSeconds(60)).header("Authorization", "Bearer " + token)
+                            .header("Content-Type", "application/json")
+                            .method("PATCH", HttpRequest.BodyPublishers.ofString(write(body)))
+                            .build(), HttpResponse.BodyHandlers.ofString());
+                }).toList();
+                assertEquals(List.of(200, 409), concurrentEdits.stream()
+                        .map(response -> response.join().statusCode()).sorted().toList());
                 assertFalse(list(call("GET", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id") + "/history", null, 200).path("items")).isEmpty());
                 JsonNode replacement = call(
                         "PUT",
@@ -142,7 +151,10 @@ class DockerSmokeTest {
                         .orElseThrow(() -> new IllegalStateException("Docker Compose не вернул адрес gateway после перезапуска"));
                 base = "http://" + address;
                 assertEquals("corelia-gateway", text(call("GET", "/api/core/v1/health", null, 200), "service"));
-                assertEquals("DOCKER-2", text(call("GET", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id"), null, 200).path("attributes"), "number"));
+                assertTrue(List.of("DOCKER-2", "DOCKER-3").contains(text(
+                        call("GET", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id"), null, 200)
+                                .path("attributes"),
+                        "number")));
                 assertArrayEquals(
                         "test-2".getBytes(java.nio.charset.StandardCharsets.UTF_8),
                         bytes("/api/core/v1/attachments/" + replacementId));
