@@ -72,6 +72,15 @@ class DockerSmokeTest {
                                         "requestId", creationRequestId,
                                         "attributes", object("number", "DOCKER-1", "amount", 1)),
                                 201);
+                JsonNode repeatedCreation =
+                        call(
+                                "POST",
+                                "/api/core/v1/documents/V3_CONTRACT",
+                                object(
+                                        "requestId", creationRequestId,
+                                        "attributes", object("number", "DOCKER-1", "amount", 1)),
+                                201);
+                assertEquals(text(created, "id"), text(repeatedCreation, "id"));
                 assertFalse(text(created, "processInstanceId").isEmpty());
                 var files =
                         call(
