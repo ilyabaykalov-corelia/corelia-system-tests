@@ -25,9 +25,10 @@ class DockerSmokeTest {
     private Path customerPackage = root.resolve("../sber-npf-corelia-config").normalize();
 
     @Test
-    void runsFiveContainersAgainstPlatformStub() throws Exception {
+    void runsNativeV3ScenarioWithoutPlatformVCalls() throws Exception {
         org.junit.jupiter.api.Assumptions.assumeTrue(Boolean.getBoolean("dockerSmoke"));
         try (var platform = new PlatformStub()) {
+            customerPackage = root.resolve("corelia-system-tests/src/test/resources/customers/customer-v3");
             prepareOverlay(platform);
             try {
                 command("up", "--no-build", "--wait", "--wait-timeout", "240");
@@ -43,50 +44,53 @@ class DockerSmokeTest {
                         number(
                                 call(
                                         "POST",
-                                        "/api/core/v1/documents/PDS_CONTRACT/search",
+                        "/api/core/v1/documents/V3_CONTRACT/search",
                                         object(),
                                         200),
                                 "total",
                                 0));
-                assertEquals("doc-1", text(call("GET", "/api/core/v1/documents/PDS_CONTRACT/doc-1", null, 200), "id"));
                 JsonNode created =
                         call(
                                 "POST",
-                                "/api/core/v1/documents/PDS_CONTRACT",
+                                "/api/core/v1/documents/V3_CONTRACT",
                                 object(
                                         "requestId", UUID.randomUUID().toString(),
                                         "attributes",
                                         object(
-                                                "contractDate",
-                                                "2026-09-08",
-                                                "contractNumber",
-                                                "DOCKER-1",
-                                                "snils",
-                                                "123-456-789 00")),
+                                                "number", "DOCKER-1", "amount", 1)),
                                 201);
-                assertEquals("process-1", text(created, "processInstanceId"));
-                platform.returnFollowUp = true;
-                call("POST", "/api/core/v1/tasks/task-1/action", object("actionCode", "IN_WORK"), 200);
+                assertFalse(text(created, "processInstanceId").isEmpty());
                 var files =
                         call(
                                 "POST",
-                                "/api/core/v1/documents/PDS_CONTRACT/" + text(created, "id") + "/attachments",
+                                "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id") + "/attachments",
                                 object(
                                         "requestId", UUID.randomUUID().toString(),
                                         "attachments",
                                         List.of(
                                                 object(
-                                                        "fileName",
-                                                        "test.txt",
-                                                        "contentType",
-                                                        "text/plain",
+                                                        "fileName", "test.pdf",
+                                                        "contentType", "application/pdf",
                                                         "contentBase64",
                                                         "dGVzdA=="))),
                                 201);
                 String id = text(files.get(0), "id");
                 assertFalse(id.isEmpty());
-                call("DELETE", "/api/core/v1/attachments/" + id + "?requestId=" + UUID.randomUUID(), null, 200);
-                call("POST", "/api/core/v1/tasks/task-2/action", object("actionCode", "APPROVED"), 200);
+                assertArrayEquals("test".getBytes(java.nio.charset.StandardCharsets.UTF_8), bytes("/api/core/v1/attachments/" + id));
+                JsonNode card = call("GET", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id"), null, 200);
+                call("PATCH", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id"),
+                        object("attributes", object("number", "DOCKER-2", "amount", 2),
+                                "expectedVersion", number(card, "version", 0),
+                                "changeToken", text(card, "changeToken"), "requestId", UUID.randomUUID().toString()), 200);
+                assertFalse(list(call("GET", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id") + "/history", null, 200)).isEmpty());
+                JsonNode workflow = call("GET", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id") + "/workflow", null, 200);
+                String taskId = text(workflow.path("task"), "id");
+                assertFalse(taskId.isEmpty());
+                call("POST", "/api/core/v1/tasks/" + taskId + "/start", object(), 200);
+                call("POST", "/api/core/v1/tasks/" + taskId + "/action", object("actionCode", "approve"), 200);
+                assertEquals(1, number(call("POST", "/api/core/v1/documents/V3_CONTRACT/search", object(), 200), "total", 0));
+                assertTrue(platform.calls.stream().noneMatch(value -> value.path().startsWith("/graphql")
+                        || value.path().startsWith("/bpmx") || value.path().startsWith("/bpmu") || value.path().startsWith("/dam")));
             } finally {
                 command("down", "--remove-orphans");
             }
@@ -94,6 +98,7 @@ class DockerSmokeTest {
     }
 
     /** Startup/catalog proof only: fixture model/transactions still need real Platform V acceptance. */
+    @org.junit.jupiter.api.Disabled("V2 Platform V compatibility scenario удалён из PHASE 11 native suite")
     @Test
     void sameImagesLoadTwoExternalCatalogsWithoutRebuilding() throws Exception {
         org.junit.jupiter.api.Assumptions.assumeTrue(Boolean.getBoolean("dockerSmoke"));
@@ -173,7 +178,19 @@ class DockerSmokeTest {
 
     private void prepareOverlay(PlatformStub platform) throws Exception {
             String dockerBase = platform.base().replace("127.0.0.1", "host.docker.internal");
-            StringBuilder yaml = new StringBuilder("services:\n");
+            StringBuilder yaml = new StringBuilder("""
+                    services:
+                      postgres:
+                        container_name: corelia-smoke-postgres
+                      seaweedfs:
+                        container_name: corelia-smoke-seaweedfs
+                        ports: !override []
+                      keycloak:
+                        container_name: corelia-smoke-keycloak
+                        ports: !override []
+                      corelia-data-service:
+                        container_name: corelia-smoke-data-service
+                    """);
             for (String service :
                     List.of(
                             "gateway",
@@ -204,6 +221,16 @@ class DockerSmokeTest {
                         .append(
                                 "      PLATFORM_V_TENANT: tenant-test\n"
                                     + "      PLATFORM_V_APP_INSTANCE_ID: app-test\n"
+                                    + "      CORELIA_PROVIDER_DOCUMENTS: native-data\n"
+                                    + "      CORELIA_PROVIDER_DOCUMENT_VERSIONS: native-data\n"
+                                    + "      CORELIA_PROVIDER_DOCUMENT_TYPES: native-data\n"
+                                    + "      CORELIA_PROVIDER_ATTACHMENTS: native-data\n"
+                                    + "      CORELIA_DOCUMENT_PROVIDER_WORKFLOW: flowable\n"
+                                    + "      CORELIA_DOCUMENT_PROVIDER_TASKS: flowable\n"
+                                    + "      CORELIA_PROVIDER_WORKFLOW: flowable\n"
+                                    + "      CORELIA_PROVIDER_TASKS: flowable\n"
+                                    + "      CORELIA_FLOWABLE_DATABASE_SCHEMA_UPDATE: 'true'\n"
+                                    + "      CORELIA_WORKFLOW_LEGACY_PLATFORM_V_ENABLED: 'false'\n"
                                     + "      REDIS_URL: ''\n");
                 if (service.equals("gateway"))
                     yaml.append("    ports: !override [\"127.0.0.1:0:7170\"]\n");
@@ -231,6 +258,14 @@ class DockerSmokeTest {
         return parse(response.body());
     }
 
+    private byte[] bytes(String path) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create(base + path)).timeout(Duration.ofSeconds(60));
+        if (token != null) request.header("Authorization", "Bearer " + token);
+        var response = client.send(request.GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(200, response.statusCode());
+        return response.body();
+    }
+
     private String command(String... arguments) throws Exception {
         List<String> command =
                 new ArrayList<>(
@@ -247,6 +282,7 @@ class DockerSmokeTest {
         var builder =
                 new ProcessBuilder(command).directory(root.toFile()).redirectErrorStream(true);
         builder.environment().put("CORELIA_CUSTOMER_CONFIG", customerPackage.toString());
+        builder.environment().put("CORELIA_INTERNAL_NETWORK_SUBNET", "172.31.0.0/16");
         for (String field : List.of("u", "g")) {
             var id = new ProcessBuilder("id", "-" + field).start();
             String value = new String(id.getInputStream().readAllBytes()).trim();
