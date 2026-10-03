@@ -121,10 +121,24 @@ class DockerSmokeTest {
                 call("POST", "/api/core/v1/tasks/" + taskId + "/start", object(), 200);
                 JsonNode card = call("GET", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id"), null, 200);
                 String documentPath = "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id");
+                JsonNode recoveryPatch = object(
+                        "attributes", object("number", "DOCKER-RECOVERED", "amount", 2),
+                        "expectedVersion", number(card, "version", 0),
+                        "changeToken", text(card, "changeToken"),
+                        "requestId", UUID.randomUUID().toString());
+                command("kill", "corelia-data-service");
+                call("PATCH", documentPath, recoveryPatch, 504);
+                command("start", "corelia-data-service");
+                command("up", "--no-build", "--wait", "--wait-timeout", "240");
+                assertEquals(
+                        "DOCKER-RECOVERED",
+                        text(eventuallyCall("PATCH", documentPath, recoveryPatch, 200).path("attributes"), "number"));
+                card = call("GET", documentPath, null, 200);
+                JsonNode concurrentCard = card;
                 var concurrentEdits = List.of("DOCKER-2", "DOCKER-3").stream().map(requestedNumber -> {
                     JsonNode body = object("attributes", object("number", requestedNumber, "amount", 2),
-                            "expectedVersion", number(card, "version", 0),
-                            "changeToken", text(card, "changeToken"), "requestId", UUID.randomUUID().toString());
+                            "expectedVersion", number(concurrentCard, "version", 0),
+                            "changeToken", text(concurrentCard, "changeToken"), "requestId", UUID.randomUUID().toString());
                     return client.sendAsync(HttpRequest.newBuilder(URI.create(base + documentPath))
                             .timeout(Duration.ofSeconds(60)).header("Authorization", "Bearer " + token)
                             .header("Content-Type", "application/json")
