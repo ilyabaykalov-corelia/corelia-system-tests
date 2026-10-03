@@ -167,6 +167,14 @@ class DockerSmokeTest {
                         bytes("/api/core/v1/attachments/" + replacementId));
                 call("POST", "/api/core/v1/tasks/" + taskId + "/action", object("actionCode", "approve"), 200);
                 assertEquals(1, number(call("POST", "/api/core/v1/documents/V3_CONTRACT/search", object(), 200), "total", 0));
+                command("restart", "postgres");
+                command("up", "--no-build", "--wait", "--wait-timeout", "240");
+                assertEquals(
+                        "V3_CONTRACT",
+                        text(call("GET", documentPath, null, 200), "typeCode"));
+                assertArrayEquals(
+                        "test-2".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        bytes("/api/core/v1/attachments/" + replacementId));
                 command("restart", "corelia-gateway", "corelia-document-service", "corelia-workflow-service", "corelia-attachment-service", "corelia-data-service");
                 command("up", "--no-build", "--wait", "--wait-timeout", "240");
                 address = command("port", "corelia-gateway", "7170").lines()
