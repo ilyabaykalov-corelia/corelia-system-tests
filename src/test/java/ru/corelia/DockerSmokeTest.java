@@ -92,6 +92,15 @@ class DockerSmokeTest {
                 502);
                 command("start", "corelia-attachment-service");
                 command("up", "--no-build", "--wait", "--wait-timeout", "240");
+                command("stop", "seaweedfs");
+                call(
+                        "POST",
+                        attachmentPath,
+                        object("requestId", UUID.randomUUID().toString(), "attachments", List.of(object(
+                                "fileName", "storage-unavailable.pdf", "contentType", "application/pdf", "contentBase64", "dGVzdA=="))),
+                        500);
+                command("start", "seaweedfs");
+                command("up", "--no-build", "--wait", "--wait-timeout", "240");
                 var files =
                         eventuallyCall(
                                 "POST",
