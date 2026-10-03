@@ -82,10 +82,20 @@ class DockerSmokeTest {
                                 201);
                 assertEquals(text(created, "id"), text(repeatedCreation, "id"));
                 assertFalse(text(created, "processInstanceId").isEmpty());
+                String attachmentPath = "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id") + "/attachments";
+                command("kill", "corelia-attachment-service");
+                call(
+                        "POST",
+                        attachmentPath,
+                        object("requestId", UUID.randomUUID().toString(), "attachments", List.of(object(
+                                "fileName", "interrupted.pdf", "contentType", "application/pdf", "contentBase64", "dGVzdA=="))),
+                502);
+                command("start", "corelia-attachment-service");
+                command("up", "--no-build", "--wait", "--wait-timeout", "240");
                 var files =
-                        call(
+                        eventuallyCall(
                                 "POST",
-                                "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id") + "/attachments",
+                                attachmentPath,
                                 object(
                                         "requestId", UUID.randomUUID().toString(),
                                         "attachments",
@@ -365,6 +375,20 @@ class DockerSmokeTest {
                         HttpResponse.BodyHandlers.ofString());
         assertEquals(expected, response.statusCode(), response.body());
         return parse(response.body());
+    }
+
+    private JsonNode eventuallyCall(String method, String path, JsonNode body, int expected)
+            throws Exception {
+        AssertionError failure = null;
+        for (int attempt = 0; attempt < 10; attempt++) {
+            try {
+                return call(method, path, body, expected);
+            } catch (AssertionError currentFailure) {
+                failure = currentFailure;
+                TimeUnit.SECONDS.sleep(1);
+            }
+        }
+        throw failure;
     }
 
     private byte[] bytes(String path) throws Exception {
