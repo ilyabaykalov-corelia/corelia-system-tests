@@ -4,10 +4,11 @@
     "corelia": ">=0.1.0 <1.0.0"
   },
   "permissionGrants": {
-    "document:V3_CONTRACT:create": ["v3_editor"],
-    "document:V3_CONTRACT:read": ["v3_editor"],
-    "document:V3_CONTRACT:edit": ["v3_editor"],
-    "workflow:V3_CONTRACT:start": ["v3_editor"]
+    "document:V3_CONTRACT:create": ["document_operator"],
+    "document:V3_CONTRACT:read": ["document_operator"],
+    "document:V3_CONTRACT:edit": ["document_operator"],
+    "attachment:V3_CONTRACT:add": ["document_operator"],
+    "workflow:V3_CONTRACT:start": ["document_operator"]
   },
   "branding": {
     "applicationName": "V3 test application"

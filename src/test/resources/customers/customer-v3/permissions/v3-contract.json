@@ -5,7 +5,7 @@
     "read": "document:V3_CONTRACT:read",
     "edit": "document:V3_CONTRACT:edit"
   },
-  "executorRole": "v3_editor",
+  "executorRole": "document_operator",
   "editableStatuses": ["CREATED"],
   "initialUploadStatuses": ["CREATED"]
 }

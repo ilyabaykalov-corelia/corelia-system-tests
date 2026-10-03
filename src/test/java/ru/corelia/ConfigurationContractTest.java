@@ -57,7 +57,7 @@ class ConfigurationContractTest {
         assertEquals("v3_contract_process", loaded.providerBindings().get("V3_CONTRACT")
                 .path("workflow").path("flowable").path("definitionKey").asString());
         var permissions = new NativePermissionProvider(loaded);
-        var editor = new AuthContext("token", "id", "editor", "Editor", "", List.of("v3_editor"), "editor");
+        var editor = new AuthContext("token", "id", "editor", "Editor", "", List.of("document_operator"), "editor");
         assertDoesNotThrow(() -> permissions.require("document:V3_CONTRACT:create", editor));
     }
     @Test void deniedCreationDoesNotStageFilesOrStartProcesses() throws Exception {
