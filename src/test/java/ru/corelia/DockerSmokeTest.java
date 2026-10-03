@@ -106,8 +106,37 @@ class DockerSmokeTest {
                                 "expectedVersion", number(card, "version", 0),
                                 "changeToken", text(card, "changeToken"), "requestId", UUID.randomUUID().toString()), 200);
                 assertFalse(list(call("GET", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id") + "/history", null, 200).path("items")).isEmpty());
+                JsonNode replacement = call(
+                        "PUT",
+                        "/api/core/v1/attachments/" + id,
+                        object(
+                                "requestId", UUID.randomUUID().toString(),
+                                "attachments",
+                                List.of(
+                                        object(
+                                                "fileName", "test-v2.pdf",
+                                                "contentType", "application/pdf",
+                                                "contentBase64", "dGVzdC0y"))),
+                        200);
+                String replacementId = text(replacement, "id");
+                assertFalse(replacementId.isEmpty());
+                assertArrayEquals(
+                        "test-2".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        bytes("/api/core/v1/attachments/" + replacementId));
                 call("POST", "/api/core/v1/tasks/" + taskId + "/action", object("actionCode", "approve"), 200);
                 assertEquals(1, number(call("POST", "/api/core/v1/documents/V3_CONTRACT/search", object(), 200), "total", 0));
+                command("restart", "corelia-gateway", "corelia-document-service", "corelia-workflow-service", "corelia-attachment-service", "corelia-data-service");
+                command("up", "--no-build", "--wait", "--wait-timeout", "240");
+                address = command("port", "corelia-gateway", "7170").lines()
+                        .filter(line -> line.matches("[^\\s:]+:\\d+"))
+                        .reduce((first, second) -> second)
+                        .orElseThrow(() -> new IllegalStateException("Docker Compose не вернул адрес gateway после перезапуска"));
+                base = "http://" + address;
+                assertEquals("corelia-gateway", text(call("GET", "/api/core/v1/health", null, 200), "service"));
+                assertEquals("DOCKER-2", text(call("GET", "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id"), null, 200).path("attributes"), "number"));
+                assertArrayEquals(
+                        "test-2".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                        bytes("/api/core/v1/attachments/" + replacementId));
                 assertTrue(platform.calls.stream().noneMatch(value -> value.path().startsWith("/graphql")
                         || value.path().startsWith("/bpmx") || value.path().startsWith("/bpmu") || value.path().startsWith("/dam")));
             } catch (AssertionError failure) {
