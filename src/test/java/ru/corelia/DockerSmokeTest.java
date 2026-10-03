@@ -177,6 +177,14 @@ class DockerSmokeTest {
                 JsonNode completion = object("actionCode", "approve", "requestId", UUID.randomUUID().toString());
                 JsonNode completed = call("POST", "/api/core/v1/tasks/" + taskId + "/action", completion, 200);
                 assertEquals(completed, call("POST", "/api/core/v1/tasks/" + taskId + "/action", completion, 200));
+                assertTrue(
+                        eventuallyCall(
+                                        "GET",
+                                        "/api/core/v1/documents/V3_CONTRACT/" + text(created, "id") + "/workflow",
+                                        null,
+                                        200)
+                                .path("task")
+                                .isNull());
                 assertEquals(1, number(call("POST", "/api/core/v1/documents/V3_CONTRACT/search", object(), 200), "total", 0));
                 Path backup = root.resolve("corelia-system-tests/target/backup-smoke");
                 recreateDirectory(backup);
