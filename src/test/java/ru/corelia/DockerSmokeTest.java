@@ -174,7 +174,9 @@ class DockerSmokeTest {
                 assertArrayEquals(
                         "test-2".getBytes(java.nio.charset.StandardCharsets.UTF_8),
                         bytes("/api/core/v1/attachments/" + replacementId));
-                call("POST", "/api/core/v1/tasks/" + taskId + "/action", object("actionCode", "approve"), 200);
+                JsonNode completion = object("actionCode", "approve", "requestId", UUID.randomUUID().toString());
+                JsonNode completed = call("POST", "/api/core/v1/tasks/" + taskId + "/action", completion, 200);
+                assertEquals(completed, call("POST", "/api/core/v1/tasks/" + taskId + "/action", completion, 200));
                 assertEquals(1, number(call("POST", "/api/core/v1/documents/V3_CONTRACT/search", object(), 200), "total", 0));
                 command("restart", "postgres");
                 command("up", "--no-build", "--wait", "--wait-timeout", "240");
