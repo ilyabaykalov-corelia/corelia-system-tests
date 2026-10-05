@@ -30,7 +30,7 @@
         </dependency>
         <dependency>
             <groupId>ru.corelia</groupId>
-            <artifactId>corelia-platform-v</artifactId>
+            <artifactId>corelia-provider-native-permissions</artifactId>
             <version>${project.version}</version>
             <scope>test</scope>
         </dependency>

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 3,
+  "compatibility": {
+    "corelia": ">=0.1.0 <1.0.0"
+  },
+  "permissionGrants": {
+    "document:V3_CONTRACT:create": ["document_operator"],
+    "document:V3_CONTRACT:read": ["document_operator"],
+    "document:V3_CONTRACT:edit": ["document_operator"],
+    "attachment:V3_CONTRACT:add": ["document_operator"],
+    "workflow:V3_CONTRACT:start": ["document_operator"],
+    "workflow:V3_CONTRACT:approve": ["document_operator"]
+  },
+  "sources": {
+    "documents": "documents",
+    "workflows": "workflows",
+    "permissions": "permissions"
+  }
+}

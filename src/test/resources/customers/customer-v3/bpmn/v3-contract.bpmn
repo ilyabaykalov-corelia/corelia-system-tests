@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:corelia="urn:corelia:bpmn"
+             xmlns:flowable="http://flowable.org/bpmn"
+             id="v3-contract"
+             targetNamespace="urn:corelia:system-test">
+  <process id="v3_contract_process" isExecutable="true">
+    <startEvent id="start" />
+    <userTask id="review" name="Проверка документа"
+              flowable:candidateGroups="document_operator"
+              corelia:actions="approve"
+              corelia:labels="Подтвердить" />
+    <endEvent id="end" />
+    <sequenceFlow id="start-review" sourceRef="start" targetRef="review" />
+    <sequenceFlow id="review-end" sourceRef="review" targetRef="end" />
+  </process>
+</definitions>

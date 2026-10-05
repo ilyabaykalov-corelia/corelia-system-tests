@@ -1,0 +1,6 @@
+{
+  "id": "V3_CONTRACT",
+  "processKey": "v3_contract_process",
+  "bpmnFile": "bpmn/v3-contract.bpmn",
+  "startActions": ["create"]
+}

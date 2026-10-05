@@ -1,0 +1,11 @@
+{
+  "id": "V3_CONTRACT",
+  "permissions": {
+    "create": "document:V3_CONTRACT:create",
+    "read": "document:V3_CONTRACT:read",
+    "edit": "document:V3_CONTRACT:edit"
+  },
+  "executorRole": "document_operator",
+  "editableStatuses": ["CREATED"],
+  "initialUploadStatuses": ["CREATED"]
+}
