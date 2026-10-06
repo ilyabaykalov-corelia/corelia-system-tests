@@ -126,7 +126,7 @@ class ConfigurationContractTest {
         var definition = (tools.jackson.databind.node.ObjectNode) loaded.documentTypes().require("CONTRACT_Y").definition();
         ((tools.jackson.databind.node.ObjectNode) definition.path("ui")).putArray("sortFields").add("value");
         var configured = new ConfigurationLoader.LoadedConfiguration(new DocumentTypeRegistry(List.of(
-            new DocumentTypeDefinition(definition))), loaded.providerBindings(), loaded.packageRoot());
+            new DocumentTypeDefinition(definition))), loaded.providerBindings(), loaded.kafkaDocumentCreation(), loaded.packageRoot());
         var types = new DocumentTypeCatalog(configured);
         var repository = mock(DocumentStore.class);
         var auth = mock(AuthContext.class);
